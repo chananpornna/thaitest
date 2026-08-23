@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AR Language Levels — M.6</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Noto Sans Thai",Tahoma,sans-serif;background:#7c3aed}
+body{
+  background:
+    radial-gradient(circle at 10% 15%,#fde047 0 8%,transparent 22%),
+    radial-gradient(circle at 90% 10%,#67e8f9 0 7%,transparent 22%),
+    radial-gradient(circle at 90% 85%,#f472b6 0 8%,transparent 24%),
+    linear-gradient(135deg,#7c3aed,#2563eb 50%,#06b6d4);
+}
+#video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;opacity:.16;transform:scaleX(-1)}
+#canvas{position:fixed;inset:0;width:100%;height:100%;z-index:20;pointer-events:none}
+.glass{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);box-shadow:0 20px 60px rgba(31,41,55,.25);backdrop-filter:blur(16px)}
+#app{position:fixed;inset:0;z-index:10}
+#cover{
+  position:absolute;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  background:
+    radial-gradient(circle at 10% 20%,rgba(253,224,71,.85) 0 8%,transparent 25%),
+    radial-gradient(circle at 90% 15%,rgba(103,232,249,.75) 0 8%,transparent 22%),
+    linear-gradient(135deg,#7c3aed,#2563eb 52%,#ec4899);
+}
+#coverCard{width:min(860px,96vw);padding:32px;border-radius:34px;color:white;text-align:center}
+#coverCard h1{font-size:clamp(28px,5vw,56px);font-weight:1000;line-height:1.15;margin:0 0 8px}
+#coverCard .sub{font-size:clamp(16px,2.3vw,22px);font-weight:700;opacity:.95}
+#teacher{font-size:15px;font-weight:800;margin:10px 0 18px;white-space:nowrap}
+#nameInput{
+  width:min(500px,100%);padding:16px 22px;border-radius:999px;border:2px solid rgba(255,255,255,.6);
+  background:rgba(255,255,255,.92);color:#4c1d95;font-size:20px;font-weight:800;outline:none;text-align:center
+}
+#go{
+  margin-top:16px;padding:16px 46px;border:0;border-radius:999px;
+  background:linear-gradient(135deg,#22c55e,#16a34a);color:white;
+  font-size:22px;font-weight:1000;cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.2)
+}
+#go:active{transform:translateY(2px)}
+#hud{position:absolute;left:16px;right:16px;top:14px;display:flex;justify-content:space-between;gap:12px;z-index:30;color:white}
+.hudBox{padding:10px 16px;border-radius:18px;font-weight:900;font-size:17px}
+#status{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:30;color:white;font-weight:900;padding:10px 18px;border-radius:999px;display:none}
+#board{
+  position:absolute;inset:84px 14px 80px;z-index:15;
+  display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px;align-items:end
+}
+.drop{
+  min-height:128px;border-radius:22px;padding:12px 10px;color:white;font-weight:1000;text-align:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  border:2px solid rgba(255,255,255,.5);box-shadow:0 12px 30px rgba(0,0,0,.16)
+}
+.drop .icon{font-size:38px;margin-bottom:5px}
+.drop small{font-size:13px;font-weight:700;opacity:.9}
+#d0{background:linear-gradient(180deg,#ef4444,#be123c)}
+#d1{background:linear-gradient(180deg,#f97316,#ea580c)}
+#d2{background:linear-gradient(180deg,#eab308,#ca8a04)}
+#d3{background:linear-gradient(180deg,#06b6d4,#0284c7)}
+#d4{background:linear-gradient(180deg,#8b5cf6,#6d28d9)}
+#questionCard{
+  position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
+  width:min(720px,74vw);min-height:170px;z-index:18;
+  padding:24px 28px;border-radius:28px;color:#3b0764;background:#fff;
+  box-shadow:0 25px 55px rgba(30,20,80,.35);border:4px solid rgba(255,255,255,.85);
+  cursor:grab;user-select:none;touch-action:none
+}
+#questionCard.dragging{cursor:grabbing;box-shadow:0 30px 70px rgba(0,0,0,.4)}
+#questionTitle{font-size:14px;color:#7c3aed;font-weight:1000;margin-bottom:8px}
+#questionText{font-size:clamp(18px,2vw,27px);line-height:1.65;font-weight:900}
+#hint{font-size:13px;color:#6b7280;margin-top:10px;font-weight:700}
+#handCursor{
+  position:fixed;width:34px;height:34px;border-radius:50%;z-index:40;pointer-events:none;
+  border:4px solid #38bdf8;background:rgba(56,189,248,.12);transform:translate(-50%,-50%);
+  display:none;transition:border-color .08s,background .08s,transform .08s
+}
+#handCursor.hover{border-color:#facc15;border-style:dashed;background:rgba(250,204,21,.15)}
+#handCursor.miss{border-color:#ef4444;background:rgba(239,68,68,.14)}
+#handCursor.grab{border-color:#22c55e;background:rgba(34,197,94,.2);transform:translate(-50%,-50%) scale(1.12)}
+#handCursor.grab:after{content:"✓";color:#fff;font-weight:1000;position:absolute;left:50%;top:50%;transform:translate(-50%,-54%)}
+#resultCard{display:none}
+@media(max-width:900px){
+  #board{grid-template-columns:repeat(5,1fr);gap:6px;inset:84px 6px 70px}
+  .drop{min-height:108px;font-size:12px;padding:8px 4px}
+  .drop .icon{font-size:30px}
+  #questionCard{width:88vw;padding:20px}
+  #teacher{white-space:normal}
+}
+/* ===== Grand Result Overlay ===== */
+#grandResult{
+  position:fixed;inset:0;z-index:2147483600;display:none;
+  align-items:center;justify-content:center;padding:22px;
+  background:
+    radial-gradient(circle at 50% 25%,rgba(255,255,255,.18),transparent 30%),
+    linear-gradient(135deg,#4f46e5 0%,#7c3aed 35%,#ec4899 68%,#f59e0b 100%);
+  overflow:hidden;
+}
+#grandResult.show{display:flex;animation:resultIn .55s ease both}
+#grandResult::before{
+  content:"";position:absolute;inset:-20%;
+  background:
+    radial-gradient(circle at 20% 20%,rgba(255,255,255,.35) 0 2px,transparent 3px),
+    radial-gradient(circle at 70% 35%,rgba(255,255,255,.28) 0 2px,transparent 3px);
+  background-size:42px 42px,61px 61px;opacity:.8;animation:twinkle 5s linear infinite;
+}
+.resultPanel{
+  position:relative;z-index:2;width:min(720px,95vw);text-align:center;
+  padding:clamp(28px,5vw,54px) clamp(20px,6vw,64px);
+  border-radius:38px;color:#fff;
+  background:rgba(20,18,68,.32);
+  border:1px solid rgba(255,255,255,.42);
+  box-shadow:0 30px 80px rgba(35,10,90,.42),inset 0 1px 0 rgba(255,255,255,.35);
+  backdrop-filter:blur(18px);
+}
+.resultTrophy{
+  font-size:clamp(110px,20vw,210px);line-height:.9;display:block;
+  filter:drop-shadow(0 18px 18px rgba(80,30,0,.32));
+  animation:trophyPop 1.2s cubic-bezier(.2,1.5,.35,1) infinite alternate;
+}
+.resultTitle{font-size:clamp(28px,5vw,58px);font-weight:1000;letter-spacing:.04em;margin:16px 0 4px;text-shadow:0 4px 0 rgba(0,0,0,.12)}
+.resultName{font-size:clamp(20px,3vw,32px);font-weight:900;margin:8px 0}
+.resultScore{
+  display:inline-flex;gap:10px;align-items:baseline;margin:14px auto 20px;
+  padding:12px 28px;border-radius:999px;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.3)
+}
+.resultScore strong{font-size:clamp(48px,9vw,92px);line-height:1}
+.resultScore span{font-size:clamp(18px,3vw,28px);font-weight:900}
+.resultMessage{font-size:clamp(16px,2.5vw,24px);font-weight:800;opacity:.96;margin-bottom:24px}
+.resultActions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.resultActions button{
+  border:0;border-radius:999px;padding:15px 28px;font-weight:1000;font-size:18px;cursor:pointer;
+  transition:transform .18s ease,filter .18s ease;
+}
+.resultActions button:hover{transform:translateY(-2px);filter:brightness(1.06)}
+#playAgainBtn{background:#fff;color:#6d28d9;box-shadow:0 10px 25px rgba(0,0,0,.18)}
+#closeResultBtn{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.38)!important}
+.confetti{position:absolute;width:11px;height:18px;border-radius:4px;animation:fall linear infinite}
+@keyframes resultIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes trophyPop{from{transform:translateY(0) rotate(-3deg) scale(.98)}to{transform:translateY(-8px) rotate(3deg) scale(1.05)}}
+@keyframes twinkle{to{transform:rotate(360deg)}}
+@keyframes fall{0%{transform:translateY(-20vh) rotate(0)}100%{transform:translateY(120vh) rotate(720deg)}}
+</style>
+</head>
+<body>
+
+<video id="video" playsinline></video>
+<canvas id="canvas"></canvas>
+
+<div id="app">
+
+  <div id="cover">
+    <div id="coverCard" class="glass">
+      <div style="font-size:70px">🗣️</div>
+      <h1>AR LANGUAGE LEVELS</h1>
+      <div class="sub">เกมการวิเคราะห์หลักการใช้ระดับของภาษา 5 ระดับ</div>
+      <div class="sub">สำหรับนักเรียนชั้นมัธยมศึกษาปีที่ 6</div>
+      <div id="teacher">คุณครูชนัญพร ณรงค์ทิพย์ ตำแหน่ง ครูชำนาญการพิเศษ กลุ่มสาระการเรียนรู้ภาษาไทย โรงเรียนห้องสอนศึกษา ในพระอุปถัมภ์</div>
+      <input id="nameInput" type="text" maxlength="40" placeholder="กรอกชื่อผู้เล่นก่อนเริ่มเกม">
+      <br>
+      <button id="go" type="button">🚀 เริ่มเกม!</button>
+      <div style="margin-top:14px;font-weight:800;font-size:14px">
+        🖐️ ใช้นิ้วชี้เลื่อน • 🤏 จีบนิ้วเพื่อหยิบ • 🖱️ ใช้เมาส์ลากได้
+      </div>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div class="hudBox glass" id="playerHud">👤 ผู้เล่น: -</div>
+    <div class="hudBox glass" id="scoreHud">⭐ คะแนน: 0</div>
+    <div class="hudBox glass" id="progressHud">📚 ข้อ: 0 / 20</div>
+  </div>
+
+  <div id="board">
+    <div id="d0" class="drop" data-level="0"><div class="icon">👑</div><div>ระดับพิธีการ</div><small>ภาษาสูง ใช้ในพิธีสำคัญ</small></div>
+    <div id="d1" class="drop" data-level="1"><div class="icon">📜</div><div>ระดับทางการ</div><small>ใช้ในงานราชการ/เอกสาร</small></div>
+    <div id="d2" class="drop" data-level="2"><div class="icon">🤝</div><div>ระดับกึ่งทางการ</div><small>สุภาพ เป็นกันเองพอสมควร</small></div>
+    <div id="d3" class="drop" data-level="3"><div class="icon">💬</div><div>ระดับสนทนา</div><small>ใช้สื่อสารทั่วไป</small></div>
+    <div id="d4" class="drop" data-level="4"><div class="icon">😄</div><div>ระดับกันเอง</div><small>ใช้กับผู้สนิทสนม</small></div>
+  </div>
+
+  <div id="questionCard">
+    <div id="questionTitle">อ่านข้อความ แล้วลากไปวางในระดับภาษาที่ถูกต้อง</div>
+    <div id="questionText">กำลังเตรียมโจทย์...</div>
+    <div id="hint">💡 ใช้นิ้วชี้เลื่อนการ์ด หรือใช้เมาส์ลากไปยังกล่องคำตอบ</div>
+  </div>
+
+  <div id="status" class="glass">กำลังหามือของคุณ...</div>
+</div>
+
+<div id="handCursor"></div>
+
+<div id="grandResult" aria-live="polite">
+  <div class="resultPanel">
+    <span class="resultTrophy">🏆</span>
+    <div class="resultTitle">ALL CLEAR!</div>
+    <div class="resultName" id="grandPlayerName">ผู้เล่น</div>
+    <div class="resultScore"><strong id="grandScore">0</strong><span>/ 400 คะแนน</span></div>
+    <div class="resultMessage" id="grandMessage">ยอดเยี่ยม! คุณผ่านภารกิจการวิเคราะห์ระดับภาษาแล้ว</div>
+    <div class="resultActions">
+      <button id="playAgainBtn" type="button">🔄 เล่นอีกครั้ง</button>
+      <button id="closeResultBtn" type="button">ปิดผลคะแนน</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const Q=[
+  {
+    t:"ขอเดชะฝ่าละอองธุลีพระบาทปกเกล้าปกกระหม่อม เนื่องในอภิลักขิตสมัยวันเฉลิมพระชนมพรรษา ข้าพระพุทธเจ้าขอพระราชทานถวายพระพรชัยมงคล",
+    a:0
+  },
+  {
+    t:"บัดนี้ ได้เวลาอันเป็นอุดมมงคลฤกษ์แล้ว ข้าพเจ้าขอประกาศเปิดการประชุมรัฐสภา ณ วาระนี้",
+    a:0
+  },
+  {
+    t:"ขอถวายความสักการะอย่างสูงสุดแด่พระบรมอัฐิของสมเด็จพระบูรพมหากษัตริยาธิราชเจ้าผู้ทรงคุณอันประเสริฐต่อแผ่นดิน",
+    a:0
+  },
+  {
+    t:"ขอพระราชทานกราบบังคมทูลทรงทราบฝ่าละอองพระบาท ข้าพระพุทธเจ้าขอพระราชทานพระบรมราชานุญาต กราบบังคมทูลรายงานสถานการณ์โดยสังเขป",
+    a:0
+  },
+  {
+    t:"จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติงบประมาณสำหรับการจัดซื้อวัสดุสำนักงานตามรายการที่แนบ",
+    a:1
+  },
+  {
+    t:"ขอเรียนเชิญท่านเข้าร่วมการประชุมสภาวิชาการ ในวันศุกร์นี้ เวลา 09.00 น. ณ ห้องประชุมใหญ่",
+    a:1
+  },
+  {
+    t:"ขอแจ้งให้บุคลากรทุกท่านทราบเรื่องการปรับเวลาปฏิบัติงาน โดยเริ่มมีผลบังคับใช้ตั้งแต่วันที่ 1 ของเดือนหน้าเป็นต้นไป",
+    a:1
+  },
+  {
+    t:"ขอเรียนเชิญผู้เสียภาษีทุกท่านดำเนินการยื่นแบบฯ ภายในระยะเวลาที่กฎหมายกำหนดเพื่อหลีกเลี่ยงค่าปรับ",
+    a:1
+  },
+  {
+    t:"สวัสดีครับทุกท่าน วันนี้ผมขออนุญาตใช้เวลาช่วงพักเที่ยงเพื่อสรุปแนวทางการทำงานของทีมเราในสัปดาห์นี้นะครับ ท่านใดมีข้อสงสัยสามารถสอบถามได้เลยครับ",
+    a:2
+  },
+  {
+    t:"เรียนทุกท่าน ไฟล์ข้อมูลที่ส่งไปทางอีเมลนั้นมีการปรับปรุงเล็กน้อย รบกวนช่วยตรวจสอบไฟล์ล่าสุดที่ผมแนบมาใหม่อีกครั้ง ขออภัยในความไม่สะดวกมา ณ ที่นี้",
+    a:2
+  },
+  {
+    t:'ในช่วงถัดไป เราจะได้รับฟังประสบการณ์ดี ๆ จากแขกรับเชิญพิเศษของเรานะคะ ในหัวข้อ "การปรับตัวของธุรกิจยุคใหม่" ขอเรียนเชิญแขกรับเชิญเลยค่ะ',
+    a:2
+  },
+  {
+    t:"สวัสดีค่ะพี่สมศรี รบกวนช่วยดูไฟล์งานที่ส่งไปให้หน่อยนะคะ หากเรียบร้อยดีแล้ว หนูจะได้ดำเนินการส่งต่อให้ทางผู้บริหารพิจารณา ขอบพระคุณล่วงหน้าค่ะ",
+    a:2
+  },
+  {
+    t:"งานสรุปประชุมเมื่อวานส่งให้ทางเมลแล้วนะ รบกวนฝากเช็คให้หน่อย พอดีรีบใช้ไปนำเสนอช่วงบ่ายนี้ ถ้ามีตรงไหนต้องแก้บอกได้เลยนะ เดี๋ยวแก้ให้ทันที",
+    a:3
+  },
+  {
+    t:"สวัสดีครับพี่ ไม่เจอกันนานเลย สบายดีไหมครับ ช่วงนี้ไม่เห็นพี่แวะมาแถวนี้เลย ไว้ว่าง ๆ เรานัดทานข้าวกันหน่อยนะครับพี่ นึกถึงตอนที่ยังทำงานด้วยกันอยู่เลย",
+    a:3
+  },
+  {
+    t:"ป้าส้มโลละเท่าไหร่คะเนี่ย ลดหน่อยได้ไหมคะ หนูจะซื้อเอาไปฝากแม่ด้วย ถ้าลดให้พิเศษ เดี๋ยวหนูเหมาหมดทั้งตะกร้านี้เลยค่ะ ป้าจะได้รีบกลับบ้านไปพักผ่อน",
+    a:3
+  },
+  {
+    t:"ร้อนจังเลยครับวันนี้ แดดแรงมากจนแทบจะละลายอยู่แล้ว สงสัยช่วงเย็นฝนน่าจะตกหนักแน่ ๆ ถ้าใครต้องกลับบ้านเตรียมตัวเผื่อรถติดไว้ด้วยนะครับ",
+    a:3
+  },
+  {
+    t:"หยุดยาวนี้ไปเที่ยวไหนป่าวแก ไปทะเลกันมั้ย มีโปรฯ ถูกมากเลยนะเว้ย",
+    a:4
+  },
+  {
+    t:"เที่ยงนี้กินไรดีวะแก อยากกินไรแซ่บ ๆ อ่ะ ไปหาร้านแถวนี้กัน",
+    a:4
+  },
+  {
+    t:"แก ขอยืมปากกาหน่อยดิ พอดีลืมเอามาว่ะ เดี๋ยวคืนให้นะ",
+    a:4
+  },
+  {
+    t:"งานโคตรเยอะเลยว่ะแก ปวดหัวชะมัด อยากรีบกลับบ้านไปนอนแล้วเนี่ย",
+    a:4
+  }
+];
+
+let started=false;
+let index=0;
+let score=0;
+let order=[];
+let playerName="";
+let dragging=false;
+let dragOffset={x:0,y:0};
+let handPoint=null;
+let handPinch=false;
+let handWasPinch=false;
+let cardHandOffset={x:0,y:0};
+let lastHandSeen=0;
+
+const video=document.getElementById("video");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const card=document.getElementById("questionCard");
+const questionText=document.getElementById("questionText");
+const status=document.getElementById("status");
+const handCursor=document.getElementById("handCursor");
+
+function resizeCanvas(){
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+}
+window.addEventListener("resize",resizeCanvas);
+resizeCanvas();
+
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function resetCardPosition(){
+  card.style.left="50%";
+  card.style.top="45%";
+  card.style.transform="translate(-50%,-50%)";
+}
+
+function updateHUD(){
+  document.getElementById("scoreHud").textContent="⭐ คะแนน: "+score;
+  document.getElementById("progressHud").textContent="📚 ข้อ: "+Math.min(index+1,20)+" / 20";
+  document.getElementById("playerHud").textContent="👤 ผู้เล่น: "+(playerName||"-");
+}
+
+function showQuestion(){
+  if(index>=order.length){
+    finish();
+    return;
+  }
+  const q=Q[order[index]];
+  questionText.textContent=q.t;
+  resetCardPosition();
+  updateHUD();
+}
+
+function start(){
+  if(started)return false;
+  playerName=document.getElementById("nameInput").value.trim()||"ผู้เล่น";
+  started=true;
+  index=0;
+  score=0;
+  order=shuffle([...Array(Q.length).keys()]);
+  document.getElementById("cover").style.display="none";
+  document.getElementById("grandResult").classList.remove("show");
+  updateHUD();
+  showQuestion();
+  return true;
+}
+
+function restart(){
+  started=false;
+  dragging=false;
+  index=0;
+  score=0;
+  order=[];
+  document.getElementById("cover").style.display="flex";
+  document.getElementById("grandResult").classList.remove("show");
+  resetCardPosition();
+  updateHUD();
+}
+
+function answer(level){
+  if(!started||index>=order.length)return;
+  const correct=Q[order[index]].a===Number(level);
+
+  if(correct){
+    score+=20;
+    flash("#22c55e","✓ ถูกต้อง +20 คะแนน");
+  }else{
+    score=Math.max(0,score-10);
+    flash("#ef4444","✕ ผิด -10 คะแนน");
+  }
+
+  index++;
+  setTimeout(showQuestion,550);
+}
+
+function flash(color,text){
+  status.textContent=text;
+  status.style.display="block";
+  status.style.background=color;
+  status.style.color="white";
+  setTimeout(()=>{
+    status.style.display=lastHandSeen? "block":"none";
+    status.textContent="กำลังหามือของคุณ...";
+    status.style.background="";
+  },500);
+}
+
+function finish(){
+  started=false;
+  document.getElementById("resultCard").style.display="block";
+  setTimeout(()=>showGrandResult(),150);
+}
+
+function pointInside(el,x,y){
+  const r=el.getBoundingClientRect();
+  return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
+}
+
+function beginDrag(x,y){
+  if(!started)return;
+  const r=card.getBoundingClientRect();
+  if(pointInside(card,x,y)){
+    dragging=true;
+    dragOffset={x:x-r.left,y:y-r.top};
+    card.classList.add("dragging");
+  }
+}
+
+function moveCard(x,y){
+  if(!dragging)return;
+  card.style.transform="none";
+  card.style.left=(x-dragOffset.x)+"px";
+  card.style.top=(y-dragOffset.y)+"px";
+}
+
+function endDrag(x,y){
+  if(!dragging)return;
+  dragging=false;
+  card.classList.remove("dragging");
+
+  let found=null;
+  document.querySelectorAll(".drop").forEach(d=>{
+    if(pointInside(d,x,y))found=d;
+  });
+
+  if(found){
+    answer(found.dataset.level);
+  }else{
+    resetCardPosition();
+  }
+}
+
+card.addEventListener("pointerdown",e=>{
+  beginDrag(e.clientX,e.clientY);
+  try{card.setPointerCapture(e.pointerId)}catch(err){}
+});
+window.addEventListener("pointermove",e=>{
+  if(dragging)moveCard(e.clientX,e.clientY);
+});
+window.addEventListener("pointerup",e=>{
+  if(dragging)endDrag(e.clientX,e.clientY);
+});
+
+function getPinchDistance(lm){
+  const dx=lm[4].x-lm[8].x;
+  const dy=lm[4].y-lm[8].y;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+
+function onResults(results){
+  if(results.multiHandLandmarks && results.multiHandLandmarks.length){
+    const lm=results.multiHandLandmarks[0];
+    lastHandSeen=Date.now();
+
+    const p=lm[8];
+    const x=(1-p.x)*window.innerWidth;
+    const y=p.y*window.innerHeight;
+    handPoint={x,y};
+
+    const pinch=getPinchDistance(lm)<0.055;
+    handPinch=pinch;
+
+    if(!handWasPinch && pinch){
+      if(pointInside(card,x,y)){
+        beginDrag(x,y);
+      }
+    }
+
+    if(pinch && dragging){
+      moveCard(x,y);
+    }
+
+    if(handWasPinch && !pinch && dragging){
+      endDrag(x,y);
+    }
+
+    handWasPinch=pinch;
+  }else{
+    handPoint=null;
+    handPinch=false;
+    handWasPinch=false;
+  }
+}
+
+const hands=new Hands({
+  locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:.65,
+  minTrackingConfidence:.65
+});
+
+hands.onResults(onResults);
+
+const camera=new Camera(video,{
+  onFrame:async()=>{
+    await hands.send({image:video});
+  },
+  width:1280,
+  height:720
+});
+
+camera.start().catch(()=>{
+  status.textContent="ไม่สามารถเปิดกล้องได้ — ใช้เมาส์ลากเล่นได้";
+  status.style.display="block";
+});
+
+function drawLoop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(handPoint){
+    handCursor.style.display="block";
+    handCursor.style.left=handPoint.x+"px";
+    handCursor.style.top=handPoint.y+"px";
+
+    const overCard=pointInside(card,handPoint.x,handPoint.y);
+    const overDrop=[...document.querySelectorAll(".drop")].some(d=>pointInside(d,handPoint.x,handPoint.y));
+
+    handCursor.className="";
+    if(dragging&&handPinch){
+      handCursor.classList.add("grab");
+    }else if(handPinch&&!overCard&&!overDrop){
+      handCursor.classList.add("miss");
+    }else if(overCard||overDrop){
+      handCursor.classList.add("hover");
+    }
+
+    status.style.display="none";
+  }else{
+    handCursor.style.display="none";
+    if(started && Date.now()-lastHandSeen>1200){
+      status.textContent="กำลังหามือของคุณ...";
+      status.style.display="block";
+    }
+  }
+
+  requestAnimationFrame(drawLoop);
+}
+drawLoop();
+
+document.getElementById("go").addEventListener("click",()=>{
+  start();
+});
+</script>
+
+<script>
+(()=>{
+  let ctx=null, master=null, timer=null, muted=false, step=0;
+
+  function init(){
+    if(ctx) return true;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+    ctx=new AC();
+    master=ctx.createGain();
+    master.gain.value=0.62;
+    master.connect(ctx.destination);
+    return true;
+  }
+
+  function unlock(){
+    if(!init()) return Promise.resolve(false);
+    if(ctx.state==="suspended"){
+      return ctx.resume().then(()=>true).catch(()=>false);
+    }
+    return Promise.resolve(true);
+  }
+
+  function note(freq,t,dur,vol,type){
+    if(!ctx||!master)return;
+    const o=ctx.createOscillator();
+    const g=ctx.createGain();
+    o.type=type||"sine";
+    o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+.01);
+    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+    o.connect(g);
+    g.connect(master);
+    o.start(t);
+    o.stop(t+dur+.03);
+  }
+
+  function startBGM(){
+    if(muted||timer||!init())return;
+
+    const lead=[
+      523.25,659.25,783.99,659.25,
+      587.33,659.25,880,783.99,
+      659.25,783.99,1046.5,783.99,
+      587.33,659.25,783.99,523.25
+    ];
+
+    const bass=[
+      130.81,130.81,164.81,164.81,
+      174.61,174.61,146.83,146.83
+    ];
+
+    step=0;
+
+    const play=()=>{
+      if(muted||!started||!ctx||ctx.state!=="running")return;
+
+      const t=ctx.currentTime+.03;
+      const m=lead[step%lead.length];
+      const b=bass[Math.floor(step/2)%bass.length];
+
+      note(m,t,.19,.10,"square");
+      note(m*2,t+.02,.08,.022,"sine");
+
+      if(step%2===0){
+        note(b,t,.25,.075,"triangle");
+      }
+
+      step++;
+    };
+
+    play();
+    timer=setInterval(play,250);
+  }
+
+  function stopBGM(){
+    if(timer){
+      clearInterval(timer);
+      timer=null;
+    }
+  }
+
+  document.addEventListener("click",(e)=>{
+    const btn=e.target.closest("#go");
+    if(!btn)return;
+
+    unlock().then(()=>{
+      setTimeout(startBGM,150);
+    });
+  },true);
+
+  const observer=new MutationObserver(()=>{
+    const result=document.getElementById("resultCard");
+    if(result && getComputedStyle(result).display!=="none"){
+      stopBGM();
+    }
+  });
+
+  observer.observe(document.documentElement,{
+    subtree:true,
+    childList:true,
+    attributes:true,
+    attributeFilter:["style","class"]
+  });
+
+  window.addEventListener("beforeunload",stopBGM);
+
+  window.startMusic=startBGM;
+  window.stopMusic=stopBGM;
+  window.unlockAudio=unlock;
+})();
+</script>
+
+<script>
+(()=>{
+  const MAX_SCORE=400;
+  let lastShown=false;
+
+  function pickName(){
+    return playerName||"ผู้เล่น";
+  }
+
+  function pickScore(){
+    return score||0;
+  }
+
+  function messageFor(currentScore){
+    const pct=currentScore/MAX_SCORE;
+
+    if(pct>=.9){
+      return "สุดยอดมาก! คุณเชี่ยวชาญการวิเคราะห์ระดับภาษาอย่างยอดเยี่ยม";
+    }
+
+    if(pct>=.7){
+      return "ทำได้ดีมาก! คุณมีความเข้าใจระดับภาษาเป็นอย่างดี";
+    }
+
+    if(pct>=.5){
+      return "เยี่ยมมาก! ฝึกฝนอีกนิด คุณจะเก่งขึ้นอีกแน่นอน";
+    }
+
+    return "คุณทำภารกิจครบแล้ว ลองเล่นอีกครั้งเพื่อทำคะแนนให้สูงขึ้น!";
+  }
+
+  function confetti(){
+    const root=document.getElementById("grandResult");
+    root.querySelectorAll(".confetti").forEach(x=>x.remove());
+
+    const colors=["#ffffff","#fde047","#f472b6","#67e8f9","#86efac"];
+
+    for(let i=0;i<80;i++){
+      const c=document.createElement("i");
+      c.className="confetti";
+      c.style.left=(Math.random()*100)+"%";
+      c.style.animationDuration=(2.2+Math.random()*2.2)+"s";
+      c.style.animationDelay=(Math.random()*1.5)+"s";
+      c.style.background=colors[i%colors.length];
+      root.appendChild(c);
+    }
+  }
+
+  window.showGrandResult=function(){
+    const box=document.getElementById("grandResult");
+    if(!box||lastShown)return;
+
+    lastShown=true;
+
+    const finalScore=pickScore();
+    const name=pickName();
+
+    document.getElementById("grandPlayerName").textContent="🎓 "+name;
+    document.getElementById("grandScore").textContent=finalScore;
+    document.getElementById("grandMessage").textContent=messageFor(finalScore);
+
+    box.classList.add("show");
+    confetti();
+  };
+
+  function resetGame(){
+    lastShown=false;
+
+    const box=document.getElementById("grandResult");
+    if(box)box.classList.remove("show");
+
+    if(typeof window.restart==="function"){
+      try{
+        window.restart();
+
+        if(typeof window.unlockAudio==="function"){
+          window.unlockAudio().then(()=>{
+            if(typeof window.startMusic==="function"){
+              window.startMusic();
+            }
+          });
+        }else if(typeof window.startMusic==="function"){
+          window.startMusic();
+        }
+
+        return;
+      }catch(e){}
+    }
+
+    window.location.reload();
+  }
+
+  document.getElementById("playAgainBtn").addEventListener("click",resetGame);
+
+  document.getElementById("closeResultBtn").addEventListener("click",()=>{
+    document.getElementById("grandResult").classList.remove("show");
+  });
+})();
+</script>
+
+</body>
+</html>
