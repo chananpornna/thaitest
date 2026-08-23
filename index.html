@@ -1,95 +1,307 @@
+
 <!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AR Language Levels — M.6</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>เกม AR วิเคราะห์ระดับของภาษา</title>
+<script src="https://cdn.tailwindcss.com">
+document.getElementById('again')?.addEventListener('click',restart);
+
+let gameAudio=null,musicTimer=null,musicMuted=false,musicStep=0;
+
+function ensureAudio(){
+  try{
+    if(!gameAudio){
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC)return false;
+      gameAudio=new AC();
+    }
+    if(gameAudio.state==='suspended')gameAudio.resume();
+    return true;
+  }catch(e){return false;}
+}
+
+function musicTone(freq,dur=.16,vol=.055,type='triangle',delay=0){
+  if(!gameAudio)return;
+  const t=gameAudio.currentTime+delay;
+  const o=gameAudio.createOscillator(),g=gameAudio.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+.015);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g);g.connect(gameAudio.destination);
+  o.start(t);o.stop(t+dur+.03);
+}
+
+function startMusic(){
+  if(musicMuted||musicTimer||!ensureAudio())return;
+  const melody=[392,493.88,587.33,659.25,587.33,493.88,440,523.25,587.33,783.99,659.25,587.33,523.25,440,493.88,659.25];
+  const bass=[98,98,130.81,130.81,146.83,146.83,110,110];
+  musicStep=0;
+  musicTone(melody[0],.20,.075,'square',0);
+  musicTone(bass[0],.24,.050,'triangle',.02);
+  musicTimer=setInterval(()=>{
+    if(!started||musicMuted)return;
+    const m=melody[musicStep%melody.length];
+    const b=bass[Math.floor(musicStep/2)%bass.length];
+    musicTone(m,.18,.055,'square');
+    if(musicStep%2===0){
+      musicTone(m*1.5,.11,.028,'sine',.02);
+      musicTone(b,.22,.045,'triangle',.01);
+    }
+    musicStep++;
+  },260);
+}
+
+function stopMusic(){
+  if(musicTimer){clearInterval(musicTimer);musicTimer=null;}
+}
+
+function toggleMusic(){
+  musicMuted=!musicMuted;
+  const b=document.getElementById('musicToggle');
+  if(musicMuted){
+    stopMusic();
+    if(b)b.textContent='🔇';
+  }else{
+    if(b)b.textContent='🔊';
+    if(started){ensureAudio();startMusic();}
+  }
+}
+
+function playWinFanfare(){
+  stopMusic();
+  if(!ensureAudio())return;
+  [523.25,659.25,783.99,1046.5,1318.51].forEach((n,i)=>musicTone(n,.34,.09,'triangle',i*.18));
+}
+
+
+
+document.getElementById('musicToggle')?.addEventListener('click',()=>{ensureAudio();toggleMusic();});
+
+
+document.getElementById('start')?.addEventListener('pointerdown',e=>{
+  if(e.target===document.getElementById('go')){
+    e.stopPropagation();
+  }
+});
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Noto Sans Thai",Tahoma,sans-serif;background:#7c3aed}
-body{
-  background:
-    radial-gradient(circle at 10% 15%,#fde047 0 8%,transparent 22%),
-    radial-gradient(circle at 90% 10%,#67e8f9 0 7%,transparent 22%),
-    radial-gradient(circle at 90% 85%,#f472b6 0 8%,transparent 24%),
-    linear-gradient(135deg,#7c3aed,#2563eb 50%,#06b6d4);
+html,body{width:100%;height:100%;margin:0;overflow:hidden;font-family:Kanit,sans-serif;background:#59b8ff;color:#fff}
+body{background:radial-gradient(circle at 10% 5%,#fff59d 0 5%,transparent 16%),radial-gradient(circle at 90% 10%,#ffc1e1 0 4%,transparent 15%),linear-gradient(135deg,#27b8ff,#6d58ff 52%,#ff66ad)}
+#app,#video,#canvas{position:absolute;inset:0;width:100%;height:100%}
+#video{object-fit:cover;transform:scaleX(-1);filter:saturate(1.1) brightness(.72)}
+#canvas{z-index:60;pointer-events:none}
+#app:before{content:"";position:absolute;inset:0;z-index:2;background:linear-gradient(180deg,rgba(21,84,180,.20),rgba(56,28,130,.10) 55%,rgba(70,20,145,.28))}
+.ui{position:absolute;inset:0;z-index:10;pointer-events:none}
+.ui>*{pointer-events:auto}
+.glass{background:rgba(255,255,255,.16);backdrop-filter:blur(14px);border:2px solid rgba(255,255,255,.38);box-shadow:0 12px 28px rgba(24,17,88,.25)}
+#hud{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;z-index:20;max-width:96vw}
+#title{font-size:clamp(16px,2.1vw,30px);font-weight:900;padding:10px 20px;border-radius:28px;text-align:center;white-space:nowrap;background:linear-gradient(135deg,#6d35ef,#c63ce9,#ff5eaa)!important;border:3px solid #fff;box-shadow:0 6px 0 rgba(78,37,150,.45),0 14px 25px rgba(30,10,80,.25);text-shadow:2px 2px 0 #7447aa}
+.hudbox{padding:7px 14px;border-radius:20px;text-align:center;min-width:82px;background:linear-gradient(135deg,#ffe55e,#ffb931)!important;color:#6b3a00;border:3px solid #fff;box-shadow:0 6px 0 rgba(176,103,0,.38)}
+#gameArea{position:absolute;top:90px;bottom:170px;left:50%;width:min(760px,calc(100vw - 80px));transform:translateX(-50%);overflow:visible;z-index:30}
+.card{position:absolute;width:min(720px,calc(100vw - 110px));min-height:200px;left:50%!important;transform:translateX(-50%);padding:28px 34px 26px;border-radius:28px;background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(225,248,255,.97));color:#26315f;border:6px solid #fff;box-shadow:0 10px 0 rgba(74,66,180,.18),0 24px 45px rgba(30,30,90,.30);cursor:grab;text-align:center;user-select:none;touch-action:none;overflow:hidden;line-height:1.55;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.card:before{content:"✨";position:absolute;right:12px;top:8px;font-size:28px}
+.card.drag{cursor:grabbing;z-index:70;transform:translateX(-50%) scale(1.03);box-shadow:0 14px 0 rgba(74,66,180,.18),0 28px 55px rgba(30,30,90,.42)}
+.emoji{font-size:50px;line-height:1;margin-bottom:10px;filter:drop-shadow(0 5px 4px rgba(20,20,90,.18))}
+.q{font-size:clamp(14px,1.25vw,19px);line-height:1.55;font-weight:700;padding:3px 8px;max-width:100%;text-wrap:pretty}
+#zones{position:absolute;bottom:10px;left:10px;right:10px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;z-index:25}
+.zone{min-height:132px;border-radius:24px;padding:10px 8px;border:4px solid #fff;box-shadow:0 7px 0 rgba(34,20,100,.22),0 14px 24px rgba(20,20,80,.22);transition:.18s;position:relative;overflow:hidden}
+.zone.hover{transform:translateY(-6px) scale(1.02);filter:brightness(1.1)}
+.zone h3{margin:2px 0;font-size:clamp(12px,1.25vw,19px);font-weight:900;text-align:center}
+.zone p{margin:0;font-size:11px;text-align:center;min-height:18px}
+.drop{margin-top:8px;border:2px dashed rgba(255,255,255,.92);border-radius:14px;padding:7px;text-align:center;font-size:12px;background:rgba(255,255,255,.15)}
+#z1{background:linear-gradient(135deg,#8b39ff,#c963ff)}#z2{background:linear-gradient(135deg,#208cff,#41d8ff)}#z3{background:linear-gradient(135deg,#ff9918,#ffe05a)}#z4{background:linear-gradient(135deg,#ff3d91,#ff8dc0)}#z5{background:linear-gradient(135deg,#14bd61,#82ef52)}
+#slideLabel{position:absolute;top:4px;left:50%;transform:translateX(-50%);z-index:35;width:min(720px,calc(100vw - 110px));padding:8px 18px;border-radius:999px;background:linear-gradient(135deg,#ff4e9b,#8f4cf7);border:3px solid #fff;text-align:center;font-weight:900;font-size:clamp(13px,1.25vw,18px);box-shadow:0 7px 0 rgba(96,42,160,.25)}
+#feedback{position:absolute;left:50%;top:82px;transform:translateX(-50%);z-index:40;padding:10px 24px;border-radius:999px;font-weight:900;display:none;white-space:nowrap;border:3px solid #fff}
+#guide{position:absolute;left:14px;top:110px;z-index:15;width:195px;padding:13px;border-radius:22px;font-size:13px;line-height:1.55}
+#teacherInfo{position:absolute;right:14px;top:108px;z-index:15;width:205px;padding:12px;border-radius:20px;text-align:center;line-height:1.42;background:linear-gradient(145deg,rgba(111,63,220,.94),rgba(255,92,171,.9))!important;border:3px solid #fff;box-shadow:0 7px 0 rgba(92,41,160,.28)}
+.teacher-title{font-size:16px;font-weight:900}.teacher-name{font-size:16px;font-weight:900}.teacher-position,.teacher-subject,.teacher-school{font-size:11px;color:#fff}
+
+
+.modal{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(20,18,80,.50);backdrop-filter:blur(9px);padding:18px}
+.box{width:min(1040px,96vw);max-height:94vh;overflow:auto;padding:28px;border-radius:38px;text-align:center;background:radial-gradient(circle at 10% 10%,rgba(255,230,90,.6),transparent 18%),radial-gradient(circle at 90% 8%,rgba(255,255,255,.22),transparent 20%),linear-gradient(145deg,#238cff,#6b43f7 50%,#ff5da9);border:5px solid #fff;box-shadow:0 12px 0 rgba(72,42,150,.35),0 25px 80px rgba(15,10,70,.55)}
+.start-grid{display:grid;grid-template-columns:180px minmax(0,1fr) 180px;align-items:end;gap:16px}
+button{border:3px solid #fff;border-radius:999px;padding:15px 40px;background:linear-gradient(135deg,#56ef57,#0dbb45);color:white;font:900 24px Kanit;cursor:pointer;text-shadow:1px 2px 0 rgba(0,80,35,.35);box-shadow:0 8px 0 #08733a,0 15px 30px rgba(0,0,0,.25)}
+button:active{transform:translateY(4px);box-shadow:0 4px 0 #08733a}
+#end .box{background:radial-gradient(circle at 10% 12%,rgba(255,220,65,.65),transparent 18%),linear-gradient(145deg,#ff7a56,#6a49f7 58%,#28bfff)}
+@media(max-width:1050px){#gameArea{left:50%;right:auto;top:90px;bottom:185px;width:calc(100vw - 40px);transform:translateX(-50%)}#guide,#teacherInfo,#zones{grid-template-columns:repeat(5,150px);overflow-x:auto;left:5px;right:5px}}
+@media(max-width:760px){#slideLabel{width:calc(100vw - 32px);font-size:12px;padding:7px 12px}.card{width:calc(100vw - 32px);min-height:210px;padding:18px 16px;border-radius:30px}.q{font-size:16px;line-height:1.6}.emoji{font-size:48px}#hud{top:5px;gap:5px}#title{font-size:13px;padding:7px 10px;white-space:normal}.hudbox{min-width:55px;padding:5px;font-size:11px}#gameArea{top:85px;bottom:175px}.card{padding:13px 15px;border-radius:28px}.q{font-size:15px}.emoji{font-size:42px}.start-grid{grid-template-columns:1fr}.box{padding:22px 16px}button{font-size:20px;padding:12px 28px}}
+
+
+
+@media(max-width:1050px){}
+@media(max-width:760px){}
+
+
+#handStatus{
+  position:absolute;top:84px;left:50%;transform:translateX(-50%);
+  z-index:55;padding:9px 18px;border-radius:999px;
+  background:rgba(255,119,34,.92);border:2px solid #fff;
+  box-shadow:0 8px 20px rgba(55,20,90,.22);
+  font-size:15px;font-weight:800;display:none;
 }
-#video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;opacity:.16;transform:scaleX(-1)}
-#canvas{position:fixed;inset:0;width:100%;height:100%;z-index:20;pointer-events:none}
-.glass{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);box-shadow:0 20px 60px rgba(31,41,55,.25);backdrop-filter:blur(16px)}
-#app{position:fixed;inset:0;z-index:10}
-#cover{
-  position:absolute;inset:0;z-index:100;
-  display:flex;align-items:center;justify-content:center;padding:20px;
-  background:
-    radial-gradient(circle at 10% 20%,rgba(253,224,71,.85) 0 8%,transparent 25%),
-    radial-gradient(circle at 90% 15%,rgba(103,232,249,.75) 0 8%,transparent 22%),
-    linear-gradient(135deg,#7c3aed,#2563eb 52%,#ec4899);
+
+
+@keyframes questionFloat{
+  0%{transform:translateX(-50%) translate(0,0)}
+  25%{transform:translateX(-50%) translate(8px,-5px)}
+  50%{transform:translateX(-50%) translate(-6px,-10px)}
+  75%{transform:translateX(-50%) translate(-9px,-4px)}
+  100%{transform:translateX(-50%) translate(0,0)}
 }
-#coverCard{width:min(860px,96vw);padding:32px;border-radius:34px;color:white;text-align:center}
-#coverCard h1{font-size:clamp(28px,5vw,56px);font-weight:1000;line-height:1.15;margin:0 0 8px}
-#coverCard .sub{font-size:clamp(16px,2.3vw,22px);font-weight:700;opacity:.95}
-#teacher{font-size:15px;font-weight:800;margin:10px 0 18px;white-space:nowrap}
-#nameInput{
-  width:min(500px,100%);padding:16px 22px;border-radius:999px;border:2px solid rgba(255,255,255,.6);
-  background:rgba(255,255,255,.92);color:#4c1d95;font-size:20px;font-weight:800;outline:none;text-align:center
+  25%{transform:translateX(-50%) translate(12px,-10px)}
+  50%{transform:translateX(-50%) translate(-8px,-16px)}
+  75%{transform:translateX(-50%) translate(-14px,-7px)}
+  100%{transform:translateX(-50%) translate(0,0)}
+}
+.card{
+  animation:questionFloat 2.2s ease-in-out infinite;
+  will-change:left,top,transform;
+}
+.card.drag{
+  animation:none !important;
+  transition:none !important;
+}
+
+
+.player-name-wrap{margin:12px auto 14px;max-width:420px}
+.player-name-wrap label{display:block;font-weight:900;margin-bottom:7px}
+#playerName{
+  width:100%;box-sizing:border-box;padding:14px 18px;border-radius:18px;
+  border:3px solid #fff;background:rgba(255,255,255,.96);color:#513a86;
+  font-size:18px;font-weight:800;outline:none;text-align:center;
+  box-shadow:0 8px 18px rgba(54,30,110,.18)
+}
+#playerName:focus{border-color:#ffd53d;box-shadow:0 0 0 4px rgba(255,213,61,.25)}
+#playerHello{display:none;font-weight:900;font-size:16px}
+
+
+
+
+
+.card{
+  width:min(78vw,720px) !important;
+  max-width:calc(100% - 36px);
+  min-height:175px;
+  max-height:230px;
+  padding:20px 28px;
+  box-sizing:border-box;
+  text-align:center;
+  border:4px solid rgba(255,255,255,.98);
+  box-shadow:0 12px 0 rgba(86,74,180,.16),0 22px 48px rgba(30,30,90,.28);
+}
+.card .q{font-size:clamp(18px,1.7vw,26px);line-height:1.55;max-height:132px;overflow:auto;padding:2px 8px;font-weight:900}
+.card.drag{animation:none !important}
+
+
+#resultCard{
+  width:min(92vw,620px);
+  margin:0 auto;
+  padding:28px 24px;
+  border-radius:34px;
+  background:linear-gradient(135deg,#fff 0%,#fff7cf 48%,#e4f6ff 100%);
+  border:5px solid #fff;
+  box-shadow:0 18px 0 rgba(108,72,180,.18),0 30px 70px rgba(40,30,90,.35);
+  text-align:center;
+}
+#trophy{font-size:88px;line-height:1;filter:drop-shadow(0 8px 6px rgba(120,80,0,.25));margin-bottom:8px}
+#resultPlayer{font-size:clamp(24px,3.2vw,42px);font-weight:1000;color:#5a3f9e;margin:8px 0}
+#resultScore{font-size:clamp(38px,6vw,72px);font-weight:1000;color:#ff5b78;line-height:1.1;margin:10px 0}
+.resultDetail{font-size:18px;font-weight:800;color:#3e3e68}
+
+
+.teacher-name,.teacher-line,#teacherName{white-space:nowrap;display:inline-block}
+
+
+#resultCard{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 0%,rgba(255,255,255,.98),rgba(255,236,150,.92) 28%,rgba(98,47,168,.94) 76%),
+    linear-gradient(135deg,#2b0d55,#6b2ba8,#f7c84b);
+  color:#fff;border:6px solid rgba(255,255,255,.95);
+  box-shadow:0 0 0 8px rgba(255,210,79,.38),0 26px 90px rgba(37,12,80,.55);
+  animation:resultReveal .8s cubic-bezier(.2,.9,.2,1) both;
+}
+#resultCard::before{
+  content:'';position:absolute;inset:-120%;
+  background:linear-gradient(110deg,transparent 42%,rgba(255,255,255,.55) 50%,transparent 58%);
+  animation:goldShine 3.2s linear infinite;
+}
+#resultCard>*{position:relative;z-index:2}
+#trophy{
+  display:inline-block;font-size:118px;
+  animation:trophyCelebrate 1.6s ease-in-out infinite;
+  filter:drop-shadow(0 0 18px rgba(255,218,76,.9));
+}
+#resultPlayer{color:#fff;font-size:clamp(28px,4vw,48px);text-shadow:0 3px 0 rgba(48,20,94,.55)}
+#resultScore{color:#ffe45c;font-size:clamp(48px,7vw,84px);text-shadow:0 5px 0 rgba(86,33,130,.75),0 0 24px rgba(255,236,120,.75)}
+#resultCard h1{font-size:clamp(42px,7vw,76px);margin:6px 0 8px;color:#fff6b0;text-shadow:0 4px 0 #71369f,0 0 22px rgba(255,242,151,.8)}
+.resultDetail{color:#fff;font-size:20px;text-shadow:0 2px 0 rgba(40,15,80,.45)}
+.confetti{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;width:10px;height:18px;border-radius:3px;animation:confettiFall 3.8s linear infinite}
+.confetti i:nth-child(1){left:8%;animation-delay:0s}
+.confetti i:nth-child(2){left:18%;animation-delay:.8s}
+.confetti i:nth-child(3){left:30%;animation-delay:1.6s}
+.confetti i:nth-child(4){left:45%;animation-delay:.4s}
+.confetti i:nth-child(5){left:58%;animation-delay:2s}
+.confetti i:nth-child(6){left:70%;animation-delay:1.1s}
+.confetti i:nth-child(7){left:84%;animation-delay:2.5s}
+.confetti i:nth-child(8){left:93%;animation-delay:1.8s}
+@keyframes resultReveal{from{opacity:0;transform:scale(.72) translateY(35px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes trophyCelebrate{0%,100%{transform:translateY(0) rotate(-5deg) scale(1)}50%{transform:translateY(-12px) rotate(5deg) scale(1.13)}}
+@keyframes goldShine{0%{transform:translateX(-35%) rotate(8deg)}100%{transform:translateX(35%) rotate(8deg)}}
+@keyframes confettiFall{0%{top:-15%;transform:rotate(0) scale(1)}100%{top:110%;transform:rotate(720deg) scale(.75)}}
+
+
+#musicToggle{position:absolute;right:18px;top:18px;z-index:70;border:0;border-radius:50%;width:48px;height:48px;font-size:22px;cursor:pointer;background:#fff;color:#6b3da8;box-shadow:0 8px 18px rgba(40,20,90,.22)}
+
+
+#go{
+  position:relative !important;
+  z-index:120 !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
+  touch-action:manipulation;
+}
+#playerName{
+  position:relative !important;
+  z-index:120 !important;
+  pointer-events:auto !important;
+}
+#start{z-index:110 !important;pointer-events:auto !important}
+
+
+/* START BUTTON FIX */
+#start{
+  z-index:2147483640 !important;
+  pointer-events:auto !important;
+}
+#start .coverCard, #start button, #start input, #start label, #start div{
+  pointer-events:auto !important;
 }
 #go{
-  margin-top:16px;padding:16px 46px;border:0;border-radius:999px;
-  background:linear-gradient(135deg,#22c55e,#16a34a);color:white;
-  font-size:22px;font-weight:1000;cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.2)
+  position:relative !important;
+  z-index:2147483641 !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
+  touch-action:manipulation !important;
 }
-#go:active{transform:translateY(2px)}
-#hud{position:absolute;left:16px;right:16px;top:14px;display:flex;justify-content:space-between;gap:12px;z-index:30;color:white}
-.hudBox{padding:10px 16px;border-radius:18px;font-weight:900;font-size:17px}
-#status{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:30;color:white;font-weight:900;padding:10px 18px;border-radius:999px;display:none}
-#board{
-  position:absolute;inset:84px 14px 80px;z-index:15;
-  display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px;align-items:end
+#playerName{
+  position:relative !important;
+  z-index:2147483641 !important;
+  pointer-events:auto !important;
 }
-.drop{
-  min-height:128px;border-radius:22px;padding:12px 10px;color:white;font-weight:1000;text-align:center;
-  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-  border:2px solid rgba(255,255,255,.5);box-shadow:0 12px 30px rgba(0,0,0,.16)
+#canvas, canvas, #arCanvas, video{
+  pointer-events:none !important;
 }
-.drop .icon{font-size:38px;margin-bottom:5px}
-.drop small{font-size:13px;font-weight:700;opacity:.9}
-#d0{background:linear-gradient(180deg,#ef4444,#be123c)}
-#d1{background:linear-gradient(180deg,#f97316,#ea580c)}
-#d2{background:linear-gradient(180deg,#eab308,#ca8a04)}
-#d3{background:linear-gradient(180deg,#06b6d4,#0284c7)}
-#d4{background:linear-gradient(180deg,#8b5cf6,#6d28d9)}
-#questionCard{
-  position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
-  width:min(720px,74vw);min-height:170px;z-index:18;
-  padding:24px 28px;border-radius:28px;color:#3b0764;background:#fff;
-  box-shadow:0 25px 55px rgba(30,20,80,.35);border:4px solid rgba(255,255,255,.85);
-  cursor:grab;user-select:none;touch-action:none
-}
-#questionCard.dragging{cursor:grabbing;box-shadow:0 30px 70px rgba(0,0,0,.4)}
-#questionTitle{font-size:14px;color:#7c3aed;font-weight:1000;margin-bottom:8px}
-#questionText{font-size:clamp(18px,2vw,27px);line-height:1.65;font-weight:900}
-#hint{font-size:13px;color:#6b7280;margin-top:10px;font-weight:700}
-#handCursor{
-  position:fixed;width:34px;height:34px;border-radius:50%;z-index:40;pointer-events:none;
-  border:4px solid #38bdf8;background:rgba(56,189,248,.12);transform:translate(-50%,-50%);
-  display:none;transition:border-color .08s,background .08s,transform .08s
-}
-#handCursor.hover{border-color:#facc15;border-style:dashed;background:rgba(250,204,21,.15)}
-#handCursor.miss{border-color:#ef4444;background:rgba(239,68,68,.14)}
-#handCursor.grab{border-color:#22c55e;background:rgba(34,197,94,.2);transform:translate(-50%,-50%) scale(1.12)}
-#handCursor.grab:after{content:"✓";color:#fff;font-weight:1000;position:absolute;left:50%;top:50%;transform:translate(-50%,-54%)}
-#resultCard{display:none}
-@media(max-width:900px){
-  #board{grid-template-columns:repeat(5,1fr);gap:6px;inset:84px 6px 70px}
-  .drop{min-height:108px;font-size:12px;padding:8px 4px}
-  .drop .icon{font-size:30px}
-  #questionCard{width:88vw;padding:20px}
-  #teacher{white-space:normal}
-}
+
+
 /* ===== Grand Result Overlay ===== */
 #grandResult{
   position:fixed;inset:0;z-index:2147483600;display:none;
@@ -144,55 +356,524 @@ body{
 @keyframes trophyPop{from{transform:translateY(0) rotate(-3deg) scale(.98)}to{transform:translateY(-8px) rotate(3deg) scale(1.05)}}
 @keyframes twinkle{to{transform:rotate(360deg)}}
 @keyframes fall{0%{transform:translateY(-20vh) rotate(0)}100%{transform:translateY(120vh) rotate(720deg)}}
+
 </style>
 </head>
-<body>
-
-<video id="video" playsinline></video>
-<canvas id="canvas"></canvas>
-
-<div id="app">
-
-  <div id="cover">
-    <div id="coverCard" class="glass">
-      <div style="font-size:70px">🗣️</div>
-      <h1>AR LANGUAGE LEVELS</h1>
-      <div class="sub">เกมการวิเคราะห์หลักการใช้ระดับของภาษา 5 ระดับ</div>
-      <div class="sub">สำหรับนักเรียนชั้นมัธยมศึกษาปีที่ 6</div>
-      <div id="teacher">คุณครูชนัญพร ณรงค์ทิพย์ ตำแหน่ง ครูชำนาญการพิเศษ กลุ่มสาระการเรียนรู้ภาษาไทย โรงเรียนห้องสอนศึกษา ในพระอุปถัมภ์</div>
-      <input id="nameInput" type="text" maxlength="40" placeholder="กรอกชื่อผู้เล่นก่อนเริ่มเกม">
-      <br>
-      <button id="go" type="button">🚀 เริ่มเกม!</button>
-      <div style="margin-top:14px;font-weight:800;font-size:14px">
-        🖐️ ใช้นิ้วชี้เลื่อน • 🤏 จีบนิ้วเพื่อหยิบ • 🖱️ ใช้เมาส์ลากได้
-      </div>
-    </div>
-  </div>
-
-  <div id="hud">
-    <div class="hudBox glass" id="playerHud">👤 ผู้เล่น: -</div>
-    <div class="hudBox glass" id="scoreHud">⭐ คะแนน: 0</div>
-    <div class="hudBox glass" id="progressHud">📚 ข้อ: 0 / 20</div>
-  </div>
-
-  <div id="board">
-    <div id="d0" class="drop" data-level="0"><div class="icon">👑</div><div>ระดับพิธีการ</div><small>ภาษาสูง ใช้ในพิธีสำคัญ</small></div>
-    <div id="d1" class="drop" data-level="1"><div class="icon">📜</div><div>ระดับทางการ</div><small>ใช้ในงานราชการ/เอกสาร</small></div>
-    <div id="d2" class="drop" data-level="2"><div class="icon">🤝</div><div>ระดับกึ่งทางการ</div><small>สุภาพ เป็นกันเองพอสมควร</small></div>
-    <div id="d3" class="drop" data-level="3"><div class="icon">💬</div><div>ระดับสนทนา</div><small>ใช้สื่อสารทั่วไป</small></div>
-    <div id="d4" class="drop" data-level="4"><div class="icon">😄</div><div>ระดับกันเอง</div><small>ใช้กับผู้สนิทสนม</small></div>
-  </div>
-
-  <div id="questionCard">
-    <div id="questionTitle">อ่านข้อความ แล้วลากไปวางในระดับภาษาที่ถูกต้อง</div>
-    <div id="questionText">กำลังเตรียมโจทย์...</div>
-    <div id="hint">💡 ใช้นิ้วชี้เลื่อนการ์ด หรือใช้เมาส์ลากไปยังกล่องคำตอบ</div>
-  </div>
-
-  <div id="status" class="glass">กำลังหามือของคุณ...</div>
+<body><div id="app"><video id="video" autoplay muted playsinline></video><canvas id="canvas"></canvas>
+<button id="musicToggle" type="button" title="เปิด/ปิดเสียงดนตรี">🔊</button>
+<div id="handStatus">🖐️ กำลังหามือของคุณ...</div>
+<div class="ui">
+<div id="slideDecor" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4;font-size:34px;opacity:.98">
+  <span style="position:absolute;left:2%;top:38%;animation:bob 1.8s infinite alternate">🌟</span>
+  <span style="position:absolute;left:12%;top:62%;animation:bob 2.1s infinite alternate">💬</span>
+  <span style="position:absolute;right:3%;top:40%;animation:bob 1.6s infinite alternate">🎤</span>
+  <span style="position:absolute;right:13%;top:62%;animation:bob 2.3s infinite alternate">✨</span>
 </div>
+<div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:3;font-size:32px;opacity:.95">
+  <span style="position:absolute;left:4%;top:14%;animation:bob 1.8s infinite alternate">⭐</span>
+  <span style="position:absolute;left:12%;top:30%;animation:bob 2.1s infinite alternate">✨</span>
+  <span style="position:absolute;right:6%;top:28%;animation:bob 1.6s infinite alternate">🌟</span>
+  <span style="position:absolute;right:18%;top:48%;animation:bob 2.3s infinite alternate">💬</span>
+</div>
+<div id="hud"><div id="title" class="glass">🎙️ AR วิเคราะห์หลักการใช้ระดับของภาษา</div><div class="hudbox glass">❤️❤️❤️<br><span style="font-size:12px">พลังใจ</span></div><div class="hudbox glass">🏆 คะแนน<br><b id="score">0</b></div><div class="hudbox glass">⭐ ข้อ<br><b id="count">0/20</b></div></div>
 
-<div id="handCursor"></div>
+
+
+<div id="feedback" class="glass"></div>
+<div id="guide" class="glass"><b>🫧 วิธีเล่น</b><br>1. เล็งด้วยนิ้วชี้<br>2. จีบนิ้วเพื่อหยิบ<br>3. ปล่อยลงช่องคำตอบ<br>4. ตอบถูก <b>+20</b><br>5. ตอบผิด <b>-10</b></div>
+<div id="teacherInfo" class="glass">
+  <div class="teacher-title">👩🏻‍🏫 ครูผู้สอน</div>
+  <div class="teacher-name">คุณครูชนัญพร ณรงค์ทิพย์</div>
+  <div class="teacher-position">ตำแหน่ง ครูชำนาญการพิเศษ</div>
+  <div class="teacher-subject">กลุ่มสาระการเรียนรู้ภาษาไทย</div>
+  <div class="teacher-school">โรงเรียนห้องสอนศึกษา ในพระอุปถัมภ์ฯ</div>
+</div>
+<div id="gameArea">
+      <div id="slideLabel">🎤 อ่านข้อความให้ชัด แล้วลากไปยังระดับภาษาที่ถูกต้อง <span id="playerHello"></span></div>
+    </div>
+<div id="zones"><div class="zone" id="z1" data-level="ceremonial">👑 <h3>ระดับพิธีการ</h3><p>ราชพิธี • พิธีสำคัญ</p><div class="drop">วางข้อความที่นี่</div></div><div class="zone" id="z2" data-level="formal">🏛️ <h3>ระดับทางการ</h3><p>ราชการ • เอกสาร</p><div class="drop">วางข้อความที่นี่</div></div><div class="zone" id="z3" data-level="semi-formal">🤝 <h3>ระดับกึ่งทางการ</h3><p>ประชุม • นำเสนอ</p><div class="drop">วางข้อความที่นี่</div></div><div class="zone" id="z4" data-level="conversation">💬 <h3>ระดับสนทนา</h3><p>พูดคุยทั่วไป</p><div class="drop">วางข้อความที่นี่</div></div><div class="zone" id="z5" data-level="casual">😄 <h3>ระดับกันเอง</h3><p>เพื่อนสนิท</p><div class="drop">วางข้อความที่นี่</div></div></div></div>
+<div class="modal" id="start">
+<div class="box">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px">
+    <div>
+      <div style="font-size:56px;line-height:1">🎤 💬 🌈</div>
+      <h1 style="font-size:clamp(30px,5vw,52px);margin:8px 0;text-shadow:3px 3px 0 #7c3dc7">เกม AR วิเคราะห์ระดับภาษา</h1>
+      <div style="display:inline-block;background:#ff4fa1;border:3px solid #fff;border-radius:999px;padding:7px 18px;font-weight:800;font-size:18px">วิชาภาษาไทย 5 • ชั้นมัธยมศึกษาปีที่ 6</div>
+      <p style="font-size:18px;margin:18px auto;max-width:620px;line-height:1.6">ใช้มือผ่านกล้องเพื่อหยิบฟองข้อความด้วยท่า <b>Pinch</b> แล้วปล่อยลงในระดับภาษาที่ถูกต้อง หรือใช้เมาส์ลากแทนได้</p>
+      <p style="margin:6px 0;font-size:17px">🎉 ตอบถูก +20 คะแนน &nbsp; ❌ ตอบผิด -10 คะแนน</p>
+      <div class="player-name-wrap">
+  <label for="playerName">🧑‍🎓 กรุณากรอกชื่อผู้เข้าเล่น</label>
+  <input id="playerName" type="text" maxlength="40" autocomplete="name" placeholder="พิมพ์ชื่อ-นามสกุล หรือชื่อเล่น">
+  <div id="nameWarning" style="display:none;margin-top:7px;color:#ff416c;font-weight:900">กรุณากรอกชื่อก่อนเริ่มเล่น</div>
+</div>
+<button id="go">🎮 เริ่มเกม!</button>
+      <p id="cammsg" style="font-size:13px;opacity:.95;margin-top:14px">กำลังเตรียมระบบกล้อง...</p>
+    </div>
+    
+  </div>
+</div></div>
+<div class="modal" id="end" style="display:none">
+<div class="box">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px">
+    <div>
+      <div style="font-size:62px">🎉 🏆 🎊</div>
+      <h1 style="font-size:clamp(42px,7vw,72px);margin:0;text-shadow:3px 4px 0 #7b43c4">All Clear!</h1>
+      <p id="finishName" style="font-size:22px;margin:8px 0">คุณทำครบทั้ง <b>20 ข้อความ</b> แล้ว</p>
+      <div style="background:#fff;color:#7a3cbe;border-radius:28px;padding:14px 24px;display:inline-block;font-size:26px;font-weight:900;border:4px solid #ffd84b">🏆 คะแนนรวม <span id="final">0</span> คะแนน</div>
+      <p style="font-size:17px">เก่งมาก! คุณสามารถวิเคราะห์และจำแนกระดับของภาษาได้อย่างยอดเยี่ยม</p>
+      <button id="again">🔄 เล่นอีกครั้ง</button>
+    </div>
+    
+  </div>
+</div></div>
+</div><script>
+const Q=[
+{level:'ceremonial',emoji:'👑',text:'ขอเดชะฝ่าละอองธุลีพระบาทปกเกล้าปกกระหม่อม เนื่องในอภิลักขิตสมัยวันเฉลิมพระชนมพรรษา ข้าพระพุทธเจ้าขอพระราชทานถวายพระพรชัยมงคล'},
+{level:'ceremonial',emoji:'🏛️',text:'บัดนี้ ได้เวลาอันเป็นอุดมมงคลฤกษ์แล้ว ข้าพเจ้าขอประกาศเปิดการประชุมรัฐสภา ณ วาระนี้'},
+{level:'ceremonial',emoji:'🕯️',text:'ขอถวายความสักการะอย่างสูงสุดแด่พระบรมอัฐิของสมเด็จพระบูรพมหากษัตริยาธิราชเจ้าผู้ทรงคุณอันประเสริฐต่อแผ่นดิน'},
+{level:'ceremonial',emoji:'🙏',text:'ขอพระราชทานกราบบังคมทูลทรงทราบฝ่าละอองพระบาท ข้าพระพุทธเจ้าขอพระราชทานพระบรมราชานุญาต กราบบังคมทูลรายงานสถานการณ์โดยสังเขป'},
+{level:'formal',emoji:'📜',text:'จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติงบประมาณสำหรับการจัดซื้อวัสดุสำนักงานตามรายการที่แนบ'},
+{level:'formal',emoji:'📅',text:'ขอเรียนเชิญท่านเข้าร่วมการประชุมสภาวิชาการ ในวันศุกร์นี้ เวลา 09.00 น. ณ ห้องประชุมใหญ่'},
+{level:'formal',emoji:'📢',text:'ขอแจ้งให้บุคลากรทุกท่านทราบเรื่องการปรับเวลาปฏิบัติงาน โดยเริ่มมีผลบังคับใช้ตั้งแต่วันที่ 1 ของเดือนหน้าเป็นต้นไป'},
+{level:'formal',emoji:'🏢',text:'ขอเรียนเชิญผู้เสียภาษีทุกท่านดำเนินการยื่นแบบฯ ภายในระยะเวลาที่กฎหมายกำหนดเพื่อหลีกเลี่ยงค่าปรับ'},
+{level:'semi-formal',emoji:'🎤',text:'สวัสดีครับทุกท่าน วันนี้ผมขออนุญาตใช้เวลาช่วงพักเที่ยงเพื่อสรุปแนวทางการทำงานของทีมเราในสัปดาห์นี้นะครับ ท่านใดมีข้อสงสัยสามารถสอบถามได้เลยครับ'},
+{level:'semi-formal',emoji:'📧',text:'เรียนทุกท่าน ไฟล์ข้อมูลที่ส่งไปทางอีเมลนั้นมีการปรับปรุงเล็กน้อย รบกวนช่วยตรวจสอบไฟล์ล่าสุดที่ผมแนบมาใหม่อีกครั้ง ขออภัยในความไม่สะดวกมา ณ ที่นี้'},
+{level:'semi-formal',emoji:'🎙️',text:'ในช่วงถัดไป เราจะได้รับฟังประสบการณ์ดี ๆ จากแขกรับเชิญพิเศษของเรานะคะ ในหัวข้อ การปรับตัวของธุรกิจยุคใหม่ ขอเรียนเชิญแขกรับเชิญเลยค่ะ'},
+{level:'semi-formal',emoji:'💻',text:'สวัสดีค่ะพี่สมศรี รบกวนช่วยดูไฟล์งานที่ส่งไปให้หน่อยนะคะ หากเรียบร้อยดีแล้ว หนูจะได้ดำเนินการส่งต่อให้ทางผู้บริหารพิจารณา ขอบพระคุณล่วงหน้าค่ะ'},
+{level:'conversation',emoji:'💬',text:'งานสรุปประชุมเมื่อวานส่งให้ทางเมลแล้วนะ รบกวนฝากเช็กให้หน่อย พอดีรีบใช้ไปนำเสนอช่วงบ่ายนี้ ถ้ามีตรงไหนต้องแก้บอกได้เลยนะ เดี๋ยวแก้ให้ทันที'},
+{level:'conversation',emoji:'😊',text:'สวัสดีครับพี่ ไม่เจอกันนานเลย สบายดีไหมครับ ช่วงนี้ไม่เห็นพี่แวะมาแถวนี้เลย ไว้ว่าง ๆ เรานัดทานข้าวกันหน่อยนะครับพี่'},
+{level:'conversation',emoji:'🍊',text:'ป้าส้มโลละเท่าไหร่คะเนี่ย ลดหน่อยได้ไหมคะ หนูจะซื้อเอาไปฝากแม่ด้วย ถ้าลดให้พิเศษเดี๋ยวหนูเหมาหมดทั้งตะกร้านี้เลยค่ะ'},
+{level:'conversation',emoji:'☀️',text:'ร้อนจังเลยครับวันนี้ แดดแรงมากจนแทบจะละลายอยู่แล้ว สงสัยช่วงเย็นฝนน่าจะตกหนักแน่ ๆ ถ้าใครต้องกลับบ้านเตรียมตัวเผื่อรถติดไว้ด้วยนะครับ'},
+{level:'casual',emoji:'🏖️',text:'หยุดยาวนี้ไปเที่ยวไหนป่าวแก ไปทะเลกันมั้ย มีโปรฯ ถูกมากเลยนะเว้ย'},
+{level:'casual',emoji:'🌶️',text:'เที่ยงนี้กินไรดีวะแก อยากกินไรแซ่บ ๆ อ่ะ ไปหาร้านแถวนี้กัน'},
+{level:'casual',emoji:'🖊️',text:'แก ขอยืมปากกาหน่อยดิ พอดีลืมเอามาว่ะ เดี๋ยวคืนให้นะ'},
+{level:'casual',emoji:'😵\u200d💫',text:'งานโคตรเยอะเลยว่ะแก ปวดหัวชะมัด อยากรีบกลับบ้านไปนอนแล้วเนี่ย'}
+]; const video=document.getElementById('video'),canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),area=document.getElementById('gameArea'),feedback=document.getElementById('feedback');
+let pool=[],cur=null,card=null,score=0,done=0,held=false,lastPinch=false,hand=false,
+    cx=innerWidth/2,cy=innerHeight/2,tx=cx,ty=cy,started=false,
+    grabOffsetX=0,grabOffsetY=0,cameraStarted=false,cameraFailed=false,
+    playerName='';
+const shuffle=a=>[...a].sort(()=>Math.random()-.5); const resize=()=>{canvas.width=innerWidth;canvas.height=innerHeight};resize();addEventListener('resize',resize);
+function hud(){scoreEl.textContent=score;count.textContent=done+'/20'} const scoreEl=document.getElementById('score'),count=document.getElementById('count');
+function say(t,ok){feedback.textContent=t;feedback.style.display='block';feedback.style.background=ok?'rgba(25,180,90,.88)':'rgba(235,45,75,.9)';setTimeout(()=>feedback.style.display='none',1100)}
+
+
+
+function spawn(){
+  if(!pool.length)return finish();
+  cur=pool.shift();
+  card=document.createElement('div');
+  card.className='card';
+  card.innerHTML='<div class="emoji">'+cur.emoji+'</div><div class="q">'+cur.text+'</div>';
+  area.append(card);
+  card.style.left='50%';
+  card.style.top='58px';
+  card.dataset.homeTop='58px';
+  
+  mouse(card);
+  const leftChars=[
+    '🗣️ นักเรียนกำลังอธิบาย',
+    '💬 นักเรียนกำลังสนทนา',
+    '🎤 นักเรียนนำเสนอ'
+  ];
+  const rightChars=[
+    '🎙️ นักเรียนกำลังพูด',
+    '📚 นักเรียนกำลังอ่าน',
+    '✨ นักเรียนกำลังตอบคำถาม'
+  ];
+  const lc=document.querySelector('.char-left'), rc=document.querySelector('.char-right');
+  if(lc) lc.alt=leftChars[done%leftChars.length];
+  if(rc) rc.alt=rightChars[done%rightChars.length];
+}
+function zoneAt(x,y){return [...document.querySelectorAll('.zone')].find(z=>{let r=z.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom})}
+function answer(z){if(!z||!card)return;if(z.dataset.level===cur.level){score+=20;done++;say('🎉 ตอบถูก! +20 คะแนน',true);card.remove();card=null;hud();setTimeout(spawn,450)}else{
+  score=Math.max(0,score-10);
+  
+  say('😅 ลองใหม่นะ! -10 คะแนน',false);
+  hud();
+  held=false;
+  card.classList.remove('drag');
+  card.style.transition='left .35s ease, top .35s ease, transform .25s ease';
+  card.style.left='50%';
+  card.style.top=card.dataset.homeTop||'58px';
+  setTimeout(()=>card.style.transition='',420);
+}}
+function mouse(el){
+  let dragging=false;
+
+  el.onpointerdown=e=>{
+    dragging=true;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('drag');
+    el.style.transition='none';
+  };
+
+  el.onpointermove=e=>{
+    if(!dragging)return;
+
+    const ar=area.getBoundingClientRect();
+    const localX=e.clientX-ar.left;
+    const localY=e.clientY-ar.top;
+
+    // จุดกึ่งกลางการ์ดตามเคอร์เซอร์โดยตรง
+    el.style.left=localX+'px';
+    el.style.top=(localY-el.offsetHeight/2)+'px';
+    el.style.transform='translateX(-50%) scale(1.05)';
+
+    const z=zoneAt(e.clientX,e.clientY);
+    document.querySelectorAll('.zone').forEach(a=>a.classList.toggle('hover',a===z));
+  };
+
+  el.onpointerup=e=>{
+    if(!dragging)return;
+
+    dragging=false;
+    el.classList.remove('drag');
+    el.style.transform='translateX(-50%)';
+
+    document.querySelectorAll('.zone').forEach(a=>a.classList.remove('hover'));
+    answer(zoneAt(e.clientX,e.clientY));
+  };
+}
+function pointInRect(x,y,r){
+  return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
+}
+
+function handInteract(pinch){
+  const goBtn=document.getElementById('go');
+
+  // หน้าเริ่มเกม: เล็งปุ่มแล้ว Pinch เพื่อเริ่มเกม
+  if(!started){
+    if(goBtn && !goBtn.disabled){
+      const br=goBtn.getBoundingClientRect();
+      const overStart=pointInRect(cx,cy,br);
+      if(overStart && pinch && !lastPinch){
+        if(start()){ goBtn.disabled=true; }
+      }
+    }
+    lastPinch=pinch;
+    return;
+  }
+
+  if(!card){
+    lastPinch=pinch;
+    return;
+  }
+
+  const cardRect=card.getBoundingClientRect();
+  const areaRect=area.getBoundingClientRect();
+  const overCard=pointInRect(cx,cy,cardRect);
+
+  // จีบนิ้วบนการ์ดเพื่อหยิบ
+  if(!held && overCard && pinch && !lastPinch){
+    held=true;
+    card.classList.add('drag');
+    card.style.transition='none';
+  }
+
+  if(held){
+    // ให้ "จุดกึ่งกลางการ์ด" ลอยตามปลายนิ้วชี้ทั้งซ้าย-ขวาและขึ้น-ลง
+    const localX=cx-areaRect.left;
+    const localY=cy-areaRect.top;
+
+    card.style.left=localX+'px';
+    card.style.top=(localY-card.offsetHeight/2)+'px';
+    card.style.transform='translateX(-50%) scale(1.05)';
+
+    // ไฮไลต์กล่องตัวเลือกเมื่อปลายนิ้วอยู่เหนือกล่อง
+    const zone=zoneAt(cx,cy);
+    document.querySelectorAll('.zone').forEach(z=>z.classList.toggle('hover',z===zone));
+
+    // กางนิ้ว = ปล่อยข้อความ
+    if(!pinch && lastPinch){
+      held=false;
+      card.classList.remove('drag');
+      card.style.transform='translateX(-50%)';
+      document.querySelectorAll('.zone').forEach(z=>z.classList.remove('hover'));
+      answer(zone);
+    }
+  }
+
+  lastPinch=pinch;
+}
+const hands=new Hands({
+  locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands/'+f
+});
+
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:.6,
+  minTrackingConfidence:.6
+});
+
+// onResults มีหน้าที่อัปเดตข้อมูลมือเท่านั้น
+hands.onResults(r=>{
+  const lm=r.multiHandLandmarks?.[0];
+  hand=!!lm;
+
+  if(!lm){
+    lastPinch=false;
+    held=false;
+    document.querySelectorAll('.zone').forEach(z=>z.classList.remove('hover'));
+    return;
+  }
+
+  // ปลายนิ้วชี้ Index Finger Tip
+  tx=(1-lm[8].x)*innerWidth;
+  ty=lm[8].y*innerHeight;
+
+  // ระยะนิ้วโป้งกับนิ้วชี้ด้วยสูตรพีทาโกรัส
+  const dx=lm[8].x-lm[4].x;
+  const dy=lm[8].y-lm[4].y;
+  const distance=Math.sqrt(dx*dx + dy*dy);
+
+  // Pinch = นิ้วโป้งแตะ/เข้าใกล้นิ้วชี้
+  const pinch=distance<.06;
+  handInteract(pinch);
+});
+
+// drawLoop ทำงานอิสระด้วย requestAnimationFrame
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // ทำให้เคอร์เซอร์เคลื่อนนุ่มตามปลายนิ้ว
+  cx+=(tx-cx)*.35;
+  cy+=(ty-cy)*.35;
+
+  const handStatus=document.getElementById('handStatus');
+  if(started && !hand && !cameraFailed){
+    handStatus.style.display='block';
+    handStatus.textContent='🖐️ กำลังหามือของคุณ...';
+  }else{
+    handStatus.style.display='none';
+  }
+
+  if(hand){
+    let cursorColor='#20d8ff'; // ปกติ: ฟ้า
+    let dashed=false;
+    let drawCheck=false;
+
+    const goBtn=document.getElementById('go');
+    const overStart=!started && goBtn && pointInRect(cx,cy,goBtn.getBoundingClientRect());
+
+    const overCard=started && card && pointInRect(cx,cy,card.getBoundingClientRect());
+
+    if(held){
+      cursorColor='#27d95b';   // จับสำเร็จ: เขียว
+      drawCheck=true;
+    }else if(overStart || overCard){
+      cursorColor='#ffd52f';   // Hover: เหลืองเส้นประ
+      dashed=true;
+    }else if(lastPinch){
+      cursorColor='#ff3f57';   // จีบนิ้ววืด: แดง
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx,cy,19,0,Math.PI*2);
+    ctx.lineWidth=4;
+    ctx.strokeStyle=cursorColor;
+    ctx.setLineDash(dashed?[7,5]:[]);
+    ctx.shadowBlur=18;
+    ctx.shadowColor=cursorColor;
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(cx,cy,5,0,Math.PI*2);
+    ctx.fillStyle=cursorColor;
+    ctx.fill();
+
+    if(drawCheck){
+      ctx.font='bold 24px Arial';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillStyle='#fff';
+      ctx.fillText('✓',cx,cy);
+    }
+    ctx.restore();
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+async function camera(){
+  if(cameraStarted||cameraFailed)return;
+  cameraStarted=true;
+
+  try{
+    const s=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    video.srcObject=s;
+    await video.play();
+
+    new Camera(video,{
+      onFrame:async()=>hands.send({image:video}),
+      width:1280,
+      height:720
+    }).start();
+
+    cammsg.textContent='📷 กล้องพร้อมแล้ว! ใช้นิ้วชี้เล็ง และจีบนิ้วเพื่อหยิบหรือกดปุ่ม';
+  }catch(e){
+    cameraFailed=true;
+    cameraStarted=false;
+    cammsg.textContent='⚠️ ใช้กล้องไม่ได้ แต่ยังเล่นด้วยเมาส์/สัมผัสได้';
+  }
+}
+
+function start(){
+  const input=document.getElementById('playerName');
+  const warning=document.getElementById('nameWarning');
+  const typed=(input?.value||'').trim();
+
+  if(!typed){
+    if(warning)warning.style.display='block';
+    if(input)input.focus();
+    return false;
+  }
+
+  playerName=typed;
+  if(warning)warning.style.display='none';
+
+  const hello=document.getElementById('playerHello');
+  if(hello){
+    hello.textContent=' • ผู้เล่น: '+playerName;
+    hello.style.display='inline';
+  }
+
+  started=true;
+  held=false;
+  lastPinch=false;
+  score=0;
+  done=0;
+
+  // เริ่มดนตรีแบบไม่ให้ข้อผิดพลาดด้านเสียงขัดขวางเกม
+  try{ ensureAudio(); startMusic(); }catch(e){}
+
+  hud();
+  pool=shuffle(Q);
+  spawn();
+
+  if(startEl)startEl.style.display='none';
+  return true;
+}function finish(){started=false;final.textContent=score;end.style.display='flex'}function restart(){stopMusic();end.style.display='none';started=true;score=done=0;hud();pool=shuffle(Q);spawn()}
+const startEl=document.getElementById('start');
+const cammsg=document.getElementById('cammsg');
+const goBtn=document.getElementById('go');
+
+function handleGameStart(event){
+  if(event){ event.preventDefault(); event.stopPropagation(); }
+  try{ ensureAudio(); }catch(e){}
+  const ok=start();
+  if(ok){
+    try{
+      if(gameAudio && gameAudio.state==='suspended'){
+        gameAudio.resume().then(()=>startMusic()).catch(()=>{});
+      }else{
+        startMusic();
+      }
+    }catch(e){}
+  }
+}
+
+if(goBtn){
+  goBtn.addEventListener('click',handleGameStart);
+  goBtn.addEventListener('pointerup',e=>{
+    // pointerup supports touch and mouse while avoiding duplicate click on same interaction
+    if(e.pointerType==='touch'){
+      e.preventDefault();
+      handleGameStart(e);
+    }
+  });
+}
+document.getElementById('playerName')?.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    document.getElementById('go')?.click();
+  }
+});
+again.onclick=restart;
+hud();
+camera();
+</script><div id="resultCard" style="display:none">
+  <div id="trophy">🏆</div>
+  <h1>All Clear!</h1>
+  <div class="resultDetail">ประกาศผลคะแนนผู้เข้าเล่น</div>
+  <div id="resultPlayer">-</div>
+  <div class="resultDetail">คะแนนรวมที่ได้รับ</div>
+  <div id="resultScore">0 คะแนน</div>
+</div>
+<!-- Isolated Continuous BGM Module -->
+<script>
+(()=>{
+  let ctx=null, master=null, timer=null, muted=false, step=0;
+
+  function init(){
+    if(ctx) return true;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+    ctx=new AC();
+    master=ctx.createGain();
+    master.gain.value=0.62;
+    master.connect(ctx.destination);
+    return true;
+  }
+  function unlock(){
+    if(!init()) return Promise.resolve(false);
+    if(ctx.state==='suspended') return ctx.resume().then(()=>true).catch(()=>false);
+    return Promise.resolve(true);
+  }
+  function note(freq, t, dur, vol, type){
+    if(!ctx||!master) return;
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type=type||'sine';
+    o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(vol,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t+dur+0.03);
+  }
+  function startBGM(){
+    if(muted||timer||!init()) return;
+    const lead=[523.25,659.25,783.99,659.25,587.33,659.25,880,783.99,659.25,783.99,1046.5,783.99,587.33,659.25,783.99,523.25];
+    const bass=[130.81,130.81,164.81,164.81,174.61,174.61,146.83,146.83];
+    step=0;
+    const play=()=>{
+      if(muted||!ctx||ctx.state!=='running') return;
+      const t=ctx.currentTime+0.03;
+      const m=lead[step%lead.length];
+      const b=bass[Math.floor(step/2)%bass.length];
+      note(m,t,0.19,0.10,'square');
+      note(m*2,t+0.02,0.08,0.022,'sine');
+      if(step%2===0) note(b,t,0.25,0.075,'triangle');
+      step++;
+    };
+    play();
+    timer=setInterval(play,250);
+  }
+  function stopBGM(){
+    if(timer){clearInterval(timer);timer=null;}
+  }
+
+  // Start BGM only from the actual user gesture on the existing start button.
+  document.addEventListener('click',(e)=>{
+    const btn=e.target.closest('#go');
+    if(!btn) return;
+    unlock().then(()=>setTimeout(startBGM,150));
+  },true);
+
+  // Stop when the original result screen becomes visible.
+  const observer=new MutationObserver(()=>{
+    const result=document.getElementById('resultCard');
+    if(result && getComputedStyle(result).display!=='none') stopBGM();
+  });
+  observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['style','class']});
+
+  window.addEventListener('beforeunload',stopBGM);
+})();
+</script>
+
 
 <div id="grandResult" aria-live="polite">
   <div class="resultPanel">
@@ -208,478 +889,6 @@ body{
   </div>
 </div>
 
-<script>
-const Q=[
-  {
-    t:"ขอเดชะฝ่าละอองธุลีพระบาทปกเกล้าปกกระหม่อม เนื่องในอภิลักขิตสมัยวันเฉลิมพระชนมพรรษา ข้าพระพุทธเจ้าขอพระราชทานถวายพระพรชัยมงคล",
-    a:0
-  },
-  {
-    t:"บัดนี้ ได้เวลาอันเป็นอุดมมงคลฤกษ์แล้ว ข้าพเจ้าขอประกาศเปิดการประชุมรัฐสภา ณ วาระนี้",
-    a:0
-  },
-  {
-    t:"ขอถวายความสักการะอย่างสูงสุดแด่พระบรมอัฐิของสมเด็จพระบูรพมหากษัตริยาธิราชเจ้าผู้ทรงคุณอันประเสริฐต่อแผ่นดิน",
-    a:0
-  },
-  {
-    t:"ขอพระราชทานกราบบังคมทูลทรงทราบฝ่าละอองพระบาท ข้าพระพุทธเจ้าขอพระราชทานพระบรมราชานุญาต กราบบังคมทูลรายงานสถานการณ์โดยสังเขป",
-    a:0
-  },
-  {
-    t:"จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติงบประมาณสำหรับการจัดซื้อวัสดุสำนักงานตามรายการที่แนบ",
-    a:1
-  },
-  {
-    t:"ขอเรียนเชิญท่านเข้าร่วมการประชุมสภาวิชาการ ในวันศุกร์นี้ เวลา 09.00 น. ณ ห้องประชุมใหญ่",
-    a:1
-  },
-  {
-    t:"ขอแจ้งให้บุคลากรทุกท่านทราบเรื่องการปรับเวลาปฏิบัติงาน โดยเริ่มมีผลบังคับใช้ตั้งแต่วันที่ 1 ของเดือนหน้าเป็นต้นไป",
-    a:1
-  },
-  {
-    t:"ขอเรียนเชิญผู้เสียภาษีทุกท่านดำเนินการยื่นแบบฯ ภายในระยะเวลาที่กฎหมายกำหนดเพื่อหลีกเลี่ยงค่าปรับ",
-    a:1
-  },
-  {
-    t:"สวัสดีครับทุกท่าน วันนี้ผมขออนุญาตใช้เวลาช่วงพักเที่ยงเพื่อสรุปแนวทางการทำงานของทีมเราในสัปดาห์นี้นะครับ ท่านใดมีข้อสงสัยสามารถสอบถามได้เลยครับ",
-    a:2
-  },
-  {
-    t:"เรียนทุกท่าน ไฟล์ข้อมูลที่ส่งไปทางอีเมลนั้นมีการปรับปรุงเล็กน้อย รบกวนช่วยตรวจสอบไฟล์ล่าสุดที่ผมแนบมาใหม่อีกครั้ง ขออภัยในความไม่สะดวกมา ณ ที่นี้",
-    a:2
-  },
-  {
-    t:'ในช่วงถัดไป เราจะได้รับฟังประสบการณ์ดี ๆ จากแขกรับเชิญพิเศษของเรานะคะ ในหัวข้อ "การปรับตัวของธุรกิจยุคใหม่" ขอเรียนเชิญแขกรับเชิญเลยค่ะ',
-    a:2
-  },
-  {
-    t:"สวัสดีค่ะพี่สมศรี รบกวนช่วยดูไฟล์งานที่ส่งไปให้หน่อยนะคะ หากเรียบร้อยดีแล้ว หนูจะได้ดำเนินการส่งต่อให้ทางผู้บริหารพิจารณา ขอบพระคุณล่วงหน้าค่ะ",
-    a:2
-  },
-  {
-    t:"งานสรุปประชุมเมื่อวานส่งให้ทางเมลแล้วนะ รบกวนฝากเช็คให้หน่อย พอดีรีบใช้ไปนำเสนอช่วงบ่ายนี้ ถ้ามีตรงไหนต้องแก้บอกได้เลยนะ เดี๋ยวแก้ให้ทันที",
-    a:3
-  },
-  {
-    t:"สวัสดีครับพี่ ไม่เจอกันนานเลย สบายดีไหมครับ ช่วงนี้ไม่เห็นพี่แวะมาแถวนี้เลย ไว้ว่าง ๆ เรานัดทานข้าวกันหน่อยนะครับพี่ นึกถึงตอนที่ยังทำงานด้วยกันอยู่เลย",
-    a:3
-  },
-  {
-    t:"ป้าส้มโลละเท่าไหร่คะเนี่ย ลดหน่อยได้ไหมคะ หนูจะซื้อเอาไปฝากแม่ด้วย ถ้าลดให้พิเศษ เดี๋ยวหนูเหมาหมดทั้งตะกร้านี้เลยค่ะ ป้าจะได้รีบกลับบ้านไปพักผ่อน",
-    a:3
-  },
-  {
-    t:"ร้อนจังเลยครับวันนี้ แดดแรงมากจนแทบจะละลายอยู่แล้ว สงสัยช่วงเย็นฝนน่าจะตกหนักแน่ ๆ ถ้าใครต้องกลับบ้านเตรียมตัวเผื่อรถติดไว้ด้วยนะครับ",
-    a:3
-  },
-  {
-    t:"หยุดยาวนี้ไปเที่ยวไหนป่าวแก ไปทะเลกันมั้ย มีโปรฯ ถูกมากเลยนะเว้ย",
-    a:4
-  },
-  {
-    t:"เที่ยงนี้กินไรดีวะแก อยากกินไรแซ่บ ๆ อ่ะ ไปหาร้านแถวนี้กัน",
-    a:4
-  },
-  {
-    t:"แก ขอยืมปากกาหน่อยดิ พอดีลืมเอามาว่ะ เดี๋ยวคืนให้นะ",
-    a:4
-  },
-  {
-    t:"งานโคตรเยอะเลยว่ะแก ปวดหัวชะมัด อยากรีบกลับบ้านไปนอนแล้วเนี่ย",
-    a:4
-  }
-];
-
-let started=false;
-let index=0;
-let score=0;
-let order=[];
-let playerName="";
-let dragging=false;
-let dragOffset={x:0,y:0};
-let handPoint=null;
-let handPinch=false;
-let handWasPinch=false;
-let cardHandOffset={x:0,y:0};
-let lastHandSeen=0;
-
-const video=document.getElementById("video");
-const canvas=document.getElementById("canvas");
-const ctx=canvas.getContext("2d");
-const card=document.getElementById("questionCard");
-const questionText=document.getElementById("questionText");
-const status=document.getElementById("status");
-const handCursor=document.getElementById("handCursor");
-
-function resizeCanvas(){
-  canvas.width=window.innerWidth;
-  canvas.height=window.innerHeight;
-}
-window.addEventListener("resize",resizeCanvas);
-resizeCanvas();
-
-function shuffle(arr){
-  const a=[...arr];
-  for(let i=a.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [a[i],a[j]]=[a[j],a[i]];
-  }
-  return a;
-}
-
-function resetCardPosition(){
-  card.style.left="50%";
-  card.style.top="45%";
-  card.style.transform="translate(-50%,-50%)";
-}
-
-function updateHUD(){
-  document.getElementById("scoreHud").textContent="⭐ คะแนน: "+score;
-  document.getElementById("progressHud").textContent="📚 ข้อ: "+Math.min(index+1,20)+" / 20";
-  document.getElementById("playerHud").textContent="👤 ผู้เล่น: "+(playerName||"-");
-}
-
-function showQuestion(){
-  if(index>=order.length){
-    finish();
-    return;
-  }
-  const q=Q[order[index]];
-  questionText.textContent=q.t;
-  resetCardPosition();
-  updateHUD();
-}
-
-function start(){
-  if(started)return false;
-  playerName=document.getElementById("nameInput").value.trim()||"ผู้เล่น";
-  started=true;
-  index=0;
-  score=0;
-  order=shuffle([...Array(Q.length).keys()]);
-  document.getElementById("cover").style.display="none";
-  document.getElementById("grandResult").classList.remove("show");
-  updateHUD();
-  showQuestion();
-  return true;
-}
-
-function restart(){
-  started=false;
-  dragging=false;
-  index=0;
-  score=0;
-  order=[];
-  document.getElementById("cover").style.display="flex";
-  document.getElementById("grandResult").classList.remove("show");
-  resetCardPosition();
-  updateHUD();
-}
-
-function answer(level){
-  if(!started||index>=order.length)return;
-  const correct=Q[order[index]].a===Number(level);
-
-  if(correct){
-    score+=20;
-    flash("#22c55e","✓ ถูกต้อง +20 คะแนน");
-  }else{
-    score=Math.max(0,score-10);
-    flash("#ef4444","✕ ผิด -10 คะแนน");
-  }
-
-  index++;
-  setTimeout(showQuestion,550);
-}
-
-function flash(color,text){
-  status.textContent=text;
-  status.style.display="block";
-  status.style.background=color;
-  status.style.color="white";
-  setTimeout(()=>{
-    status.style.display=lastHandSeen? "block":"none";
-    status.textContent="กำลังหามือของคุณ...";
-    status.style.background="";
-  },500);
-}
-
-function finish(){
-  started=false;
-  document.getElementById("resultCard").style.display="block";
-  setTimeout(()=>showGrandResult(),150);
-}
-
-function pointInside(el,x,y){
-  const r=el.getBoundingClientRect();
-  return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
-}
-
-function beginDrag(x,y){
-  if(!started)return;
-  const r=card.getBoundingClientRect();
-  if(pointInside(card,x,y)){
-    dragging=true;
-    dragOffset={x:x-r.left,y:y-r.top};
-    card.classList.add("dragging");
-  }
-}
-
-function moveCard(x,y){
-  if(!dragging)return;
-  card.style.transform="none";
-  card.style.left=(x-dragOffset.x)+"px";
-  card.style.top=(y-dragOffset.y)+"px";
-}
-
-function endDrag(x,y){
-  if(!dragging)return;
-  dragging=false;
-  card.classList.remove("dragging");
-
-  let found=null;
-  document.querySelectorAll(".drop").forEach(d=>{
-    if(pointInside(d,x,y))found=d;
-  });
-
-  if(found){
-    answer(found.dataset.level);
-  }else{
-    resetCardPosition();
-  }
-}
-
-card.addEventListener("pointerdown",e=>{
-  beginDrag(e.clientX,e.clientY);
-  try{card.setPointerCapture(e.pointerId)}catch(err){}
-});
-window.addEventListener("pointermove",e=>{
-  if(dragging)moveCard(e.clientX,e.clientY);
-});
-window.addEventListener("pointerup",e=>{
-  if(dragging)endDrag(e.clientX,e.clientY);
-});
-
-function getPinchDistance(lm){
-  const dx=lm[4].x-lm[8].x;
-  const dy=lm[4].y-lm[8].y;
-  return Math.sqrt(dx*dx+dy*dy);
-}
-
-function onResults(results){
-  if(results.multiHandLandmarks && results.multiHandLandmarks.length){
-    const lm=results.multiHandLandmarks[0];
-    lastHandSeen=Date.now();
-
-    const p=lm[8];
-    const x=(1-p.x)*window.innerWidth;
-    const y=p.y*window.innerHeight;
-    handPoint={x,y};
-
-    const pinch=getPinchDistance(lm)<0.055;
-    handPinch=pinch;
-
-    if(!handWasPinch && pinch){
-      if(pointInside(card,x,y)){
-        beginDrag(x,y);
-      }
-    }
-
-    if(pinch && dragging){
-      moveCard(x,y);
-    }
-
-    if(handWasPinch && !pinch && dragging){
-      endDrag(x,y);
-    }
-
-    handWasPinch=pinch;
-  }else{
-    handPoint=null;
-    handPinch=false;
-    handWasPinch=false;
-  }
-}
-
-const hands=new Hands({
-  locateFile:file=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-});
-
-hands.setOptions({
-  maxNumHands:1,
-  modelComplexity:1,
-  minDetectionConfidence:.65,
-  minTrackingConfidence:.65
-});
-
-hands.onResults(onResults);
-
-const camera=new Camera(video,{
-  onFrame:async()=>{
-    await hands.send({image:video});
-  },
-  width:1280,
-  height:720
-});
-
-camera.start().catch(()=>{
-  status.textContent="ไม่สามารถเปิดกล้องได้ — ใช้เมาส์ลากเล่นได้";
-  status.style.display="block";
-});
-
-function drawLoop(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  if(handPoint){
-    handCursor.style.display="block";
-    handCursor.style.left=handPoint.x+"px";
-    handCursor.style.top=handPoint.y+"px";
-
-    const overCard=pointInside(card,handPoint.x,handPoint.y);
-    const overDrop=[...document.querySelectorAll(".drop")].some(d=>pointInside(d,handPoint.x,handPoint.y));
-
-    handCursor.className="";
-    if(dragging&&handPinch){
-      handCursor.classList.add("grab");
-    }else if(handPinch&&!overCard&&!overDrop){
-      handCursor.classList.add("miss");
-    }else if(overCard||overDrop){
-      handCursor.classList.add("hover");
-    }
-
-    status.style.display="none";
-  }else{
-    handCursor.style.display="none";
-    if(started && Date.now()-lastHandSeen>1200){
-      status.textContent="กำลังหามือของคุณ...";
-      status.style.display="block";
-    }
-  }
-
-  requestAnimationFrame(drawLoop);
-}
-drawLoop();
-
-document.getElementById("go").addEventListener("click",()=>{
-  start();
-});
-</script>
-
-<script>
-(()=>{
-  let ctx=null, master=null, timer=null, muted=false, step=0;
-
-  function init(){
-    if(ctx) return true;
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC) return false;
-    ctx=new AC();
-    master=ctx.createGain();
-    master.gain.value=0.62;
-    master.connect(ctx.destination);
-    return true;
-  }
-
-  function unlock(){
-    if(!init()) return Promise.resolve(false);
-    if(ctx.state==="suspended"){
-      return ctx.resume().then(()=>true).catch(()=>false);
-    }
-    return Promise.resolve(true);
-  }
-
-  function note(freq,t,dur,vol,type){
-    if(!ctx||!master)return;
-    const o=ctx.createOscillator();
-    const g=ctx.createGain();
-    o.type=type||"sine";
-    o.frequency.setValueAtTime(freq,t);
-    g.gain.setValueAtTime(.0001,t);
-    g.gain.exponentialRampToValueAtTime(vol,t+.01);
-    g.gain.exponentialRampToValueAtTime(.0001,t+dur);
-    o.connect(g);
-    g.connect(master);
-    o.start(t);
-    o.stop(t+dur+.03);
-  }
-
-  function startBGM(){
-    if(muted||timer||!init())return;
-
-    const lead=[
-      523.25,659.25,783.99,659.25,
-      587.33,659.25,880,783.99,
-      659.25,783.99,1046.5,783.99,
-      587.33,659.25,783.99,523.25
-    ];
-
-    const bass=[
-      130.81,130.81,164.81,164.81,
-      174.61,174.61,146.83,146.83
-    ];
-
-    step=0;
-
-    const play=()=>{
-      if(muted||!started||!ctx||ctx.state!=="running")return;
-
-      const t=ctx.currentTime+.03;
-      const m=lead[step%lead.length];
-      const b=bass[Math.floor(step/2)%bass.length];
-
-      note(m,t,.19,.10,"square");
-      note(m*2,t+.02,.08,.022,"sine");
-
-      if(step%2===0){
-        note(b,t,.25,.075,"triangle");
-      }
-
-      step++;
-    };
-
-    play();
-    timer=setInterval(play,250);
-  }
-
-  function stopBGM(){
-    if(timer){
-      clearInterval(timer);
-      timer=null;
-    }
-  }
-
-  document.addEventListener("click",(e)=>{
-    const btn=e.target.closest("#go");
-    if(!btn)return;
-
-    unlock().then(()=>{
-      setTimeout(startBGM,150);
-    });
-  },true);
-
-  const observer=new MutationObserver(()=>{
-    const result=document.getElementById("resultCard");
-    if(result && getComputedStyle(result).display!=="none"){
-      stopBGM();
-    }
-  });
-
-  observer.observe(document.documentElement,{
-    subtree:true,
-    childList:true,
-    attributes:true,
-    attributeFilter:["style","class"]
-  });
-
-  window.addEventListener("beforeunload",stopBGM);
-
-  window.startMusic=startBGM;
-  window.stopMusic=stopBGM;
-  window.unlockAudio=unlock;
-})();
-</script>
 
 <script>
 (()=>{
@@ -687,99 +896,109 @@ document.getElementById("go").addEventListener("click",()=>{
   let lastShown=false;
 
   function pickName(){
-    return playerName||"ผู้เล่น";
+    const ids=['playerName','name','player','grandPlayerName'];
+    for(const id of ids){
+      const el=document.getElementById(id);
+      if(el && el.value && el.value.trim()) return el.value.trim();
+      if(el && el.textContent && el.textContent.trim() && id!=='grandPlayerName') return el.textContent.trim();
+    }
+    try{
+      return window.playerName || window.player || localStorage.getItem('playerName') || 'ผู้เล่น';
+    }catch(e){return 'ผู้เล่น'}
   }
 
   function pickScore(){
-    return score||0;
+    if(typeof window.score==='number') return window.score;
+    const ids=['score','scoreText','finalScore'];
+    for(const id of ids){
+      const el=document.getElementById(id);
+      if(el){
+        const n=parseInt((el.textContent||'').replace(/[^\d]/g,''),10);
+        if(!isNaN(n)) return n;
+      }
+    }
+    return 0;
   }
 
-  function messageFor(currentScore){
-    const pct=currentScore/MAX_SCORE;
-
-    if(pct>=.9){
-      return "สุดยอดมาก! คุณเชี่ยวชาญการวิเคราะห์ระดับภาษาอย่างยอดเยี่ยม";
-    }
-
-    if(pct>=.7){
-      return "ทำได้ดีมาก! คุณมีความเข้าใจระดับภาษาเป็นอย่างดี";
-    }
-
-    if(pct>=.5){
-      return "เยี่ยมมาก! ฝึกฝนอีกนิด คุณจะเก่งขึ้นอีกแน่นอน";
-    }
-
-    return "คุณทำภารกิจครบแล้ว ลองเล่นอีกครั้งเพื่อทำคะแนนให้สูงขึ้น!";
+  function messageFor(score){
+    const pct=MAX_SCORE?score/MAX_SCORE:0;
+    if(pct>=.9) return 'สุดยอดมาก! คุณเชี่ยวชาญการวิเคราะห์ระดับภาษาอย่างยอดเยี่ยม';
+    if(pct>=.7) return 'ทำได้ดีมาก! คุณมีความเข้าใจระดับภาษาเป็นอย่างดี';
+    if(pct>=.5) return 'เยี่ยมมาก! ฝึกฝนอีกนิด คุณจะเก่งขึ้นอีกแน่นอน';
+    return 'คุณทำภารกิจครบแล้ว ลองเล่นอีกครั้งเพื่อทำคะแนนให้สูงขึ้น!';
   }
 
   function confetti(){
-    const root=document.getElementById("grandResult");
-    root.querySelectorAll(".confetti").forEach(x=>x.remove());
-
-    const colors=["#ffffff","#fde047","#f472b6","#67e8f9","#86efac"];
-
+    const root=document.getElementById('grandResult');
+    root.querySelectorAll('.confetti').forEach(x=>x.remove());
     for(let i=0;i<80;i++){
-      const c=document.createElement("i");
-      c.className="confetti";
-      c.style.left=(Math.random()*100)+"%";
-      c.style.animationDuration=(2.2+Math.random()*2.2)+"s";
-      c.style.animationDelay=(Math.random()*1.5)+"s";
-      c.style.background=colors[i%colors.length];
+      const c=document.createElement('i');c.className='confetti';
+      c.style.left=(Math.random()*100)+'%';
+      c.style.animationDuration=(2.2+Math.random()*2.2)+'s';
+      c.style.animationDelay=(Math.random()*1.5)+'s';
+      c.style.background=['#fff','#fde047','#f472b6','#67e8f9','#86efac'][i%5];
       root.appendChild(c);
     }
   }
 
-  window.showGrandResult=function(){
-    const box=document.getElementById("grandResult");
-    if(!box||lastShown)return;
-
+  function showGrand(){
+    const box=document.getElementById('grandResult');
+    if(!box || lastShown) return;
     lastShown=true;
-
-    const finalScore=pickScore();
-    const name=pickName();
-
-    document.getElementById("grandPlayerName").textContent="🎓 "+name;
-    document.getElementById("grandScore").textContent=finalScore;
-    document.getElementById("grandMessage").textContent=messageFor(finalScore);
-
-    box.classList.add("show");
+    const score=pickScore(), name=pickName();
+    document.getElementById('grandPlayerName').textContent='🎓 '+name;
+    document.getElementById('grandScore').textContent=score;
+    document.getElementById('grandMessage').textContent=messageFor(score);
+    box.classList.add('show');
     confetti();
-  };
+  }
 
   function resetGame(){
+    // Return directly to the original game and use its native restart() function.
     lastShown=false;
+    const box=document.getElementById('grandResult');
+    if(box) box.classList.remove('show');
 
-    const box=document.getElementById("grandResult");
-    if(box)box.classList.remove("show");
-
-    if(typeof window.restart==="function"){
+    if(typeof window.restart==='function'){
       try{
         window.restart();
-
-        if(typeof window.unlockAudio==="function"){
+        if(typeof window.unlockAudio==='function'){
           window.unlockAudio().then(()=>{
-            if(typeof window.startMusic==="function"){
-              window.startMusic();
-            }
+            if(typeof window.startMusic==='function') window.startMusic();
           });
-        }else if(typeof window.startMusic==="function"){
+        }else if(typeof window.startMusic==='function'){
           window.startMusic();
         }
-
         return;
       }catch(e){}
     }
 
+    // Safe fallback if the native restart is unavailable.
     window.location.reload();
   }
 
-  document.getElementById("playAgainBtn").addEventListener("click",resetGame);
+  document.getElementById('playAgainBtn')?.addEventListener('click',resetGame);
+  document.getElementById('closeResultBtn')?.addEventListener('click',()=>document.getElementById('grandResult').classList.remove('show'));
 
-  document.getElementById("closeResultBtn").addEventListener("click",()=>{
-    document.getElementById("grandResult").classList.remove("show");
-  });
+  // Detect original end screens.
+  const watch=()=>{
+    const candidates=['resultCard','result','gameOver','finish','endScreen'];
+    for(const id of candidates){
+      const el=document.getElementById(id);
+      if(el){
+        const s=getComputedStyle(el);
+        if(s.display!=='none' && s.visibility!=='hidden' && el.offsetParent!==null){
+          showGrand(); return;
+        }
+      }
+    }
+    const bodyText=document.body.innerText||'';
+    if(/All Clear!/i.test(bodyText) && (typeof window.started!=='undefined' ? !window.started : true)) showGrand();
+  };
+  const observer=new MutationObserver(watch);
+  observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
+  setInterval(watch,500);
 })();
 </script>
 
-</body>
-</html>
+</body></html>
