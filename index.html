@@ -1001,4 +1001,107 @@ camera();
 })();
 </script>
 
+
+<!-- iPhone/iPad compatibility patch -->
+<style>
+html,body{height:100%;height:100dvh;overscroll-behavior:none}
+#app{min-height:100vh;min-height:100dvh}
+button,input{font:inherit}
+@media (max-width: 900px){
+  #video{display:none!important}
+  #app{background:radial-gradient(circle at 10% 5%,#fff59d 0 5%,transparent 16%),linear-gradient(135deg,#27b8ff,#6d58ff 52%,#ff66ad)}
+  #guide,#teacherInfo{display:none!important}
+  #hud{left:8px;right:8px;transform:none;width:auto;justify-content:center;gap:5px}
+  #title{flex:1;max-width:none;font-size:12px;line-height:1.2}
+  .hudbox{min-width:58px;font-size:11px;padding:5px 6px}
+  #gameArea{top:78px;bottom:155px;width:100%;left:0;transform:none}
+  #slideLabel{top:0;width:calc(100vw - 20px);font-size:12px;white-space:normal}
+  .card{width:calc(100vw - 28px)!important;max-width:none;left:50%!important;top:58px!important;
+    min-height:150px;max-height:240px;padding:14px 16px;border-radius:24px}
+  .card .q{font-size:clamp(15px,4.2vw,20px);max-height:145px;overflow:auto;-webkit-overflow-scrolling:touch}
+  .emoji{font-size:40px;margin-bottom:6px}
+  #zones{bottom:8px;left:6px;right:6px;gap:5px;overflow:visible}
+  .zone{min-height:108px;padding:7px 3px;border-radius:16px;border-width:3px}
+  .zone h3{font-size:11px;line-height:1.1;margin:2px 0}
+  .zone p{display:none}.drop{font-size:9px;padding:5px 2px;margin-top:6px}
+  #musicToggle{right:10px;top:52px;width:42px;height:42px;font-size:19px;z-index:2147483645}
+  .box{width:min(96vw,620px);max-height:92dvh;border-radius:28px;padding:18px 12px}
+  #start .box h1{font-size:clamp(27px,8vw,42px)!important}
+  #start .box p{font-size:15px!important}
+  #playerName{font-size:16px;padding:12px 14px}
+  #go{min-height:52px}
+}
+@media (max-width:430px) and (max-height:760px){
+  #hud{top:2px}.hudbox{min-width:48px;font-size:10px}
+  #gameArea{top:68px;bottom:138px}
+  .card{min-height:135px;max-height:205px;padding:10px 12px}
+  .card .q{font-size:14px;line-height:1.42;max-height:118px}
+  .emoji{font-size:34px}
+  .zone{min-height:92px}.zone h3{font-size:10px}.drop{font-size:8px}
+}
+@supports (padding: max(0px)){
+  #hud{top:max(6px,env(safe-area-inset-top))}
+  #zones{bottom:max(8px,env(safe-area-inset-bottom))}
+  #musicToggle{top:max(52px,calc(env(safe-area-inset-top) + 46px))}
+}
+</style>
+<script>
+/* Single iOS-safe audio controller: unlocked only from real touch/click gestures */
+(()=>{
+  let ac=null, master=null, timer=null, muted=false, step=0;
+  const btn=()=>document.getElementById('musicToggle');
+  function init(){
+    if(ac) return true;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+    ac=new AC();
+    master=ac.createGain(); master.gain.value=.32; master.connect(ac.destination);
+    window.gameAudio=ac;
+    return true;
+  }
+  async function unlock(){
+    if(!init()) return false;
+    try{ if(ac.state!=='running') await ac.resume(); }catch(e){return false}
+    return ac.state==='running';
+  }
+  function tone(f,d=.14,v=.05,type='triangle',delay=0){
+    if(!ac||ac.state!=='running'||muted)return;
+    const t=ac.currentTime+delay,o=ac.createOscillator(),g=ac.createGain();
+    o.type=type;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(.0001,t);
+    g.gain.exponentialRampToValueAtTime(v,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    o.connect(g);g.connect(master);o.start(t);o.stop(t+d+.03);
+  }
+  function playTick(){
+    const lead=[392,493.88,587.33,659.25,587.33,493.88,440,523.25,587.33,783.99,659.25,587.33,523.25,440,493.88,659.25];
+    const bass=[98,98,130.81,130.81,146.83,146.83,110,110];
+    const m=lead[step%lead.length], b=bass[Math.floor(step/2)%bass.length];
+    tone(m,.16,.045,'square'); if(step%2===0){tone(m*1.5,.08,.018,'sine',.015);tone(b,.20,.035,'triangle',.01)} step++;
+  }
+  function start(){
+    if(muted||timer||!ac||ac.state!=='running')return;
+    playTick(); timer=setInterval(playTick,260);
+  }
+  function stop(){if(timer){clearInterval(timer);timer=null}}
+  async function startFromGesture(){
+    if(await unlock()){start();update()}
+  }
+  function update(){const b=btn();if(b)b.textContent=muted?'🔇':'🔊'}
+  function toggle(){
+    muted=!muted;
+    if(muted)stop(); else startFromGesture();
+    update();
+  }
+  window.unlockAudio=startFromGesture;
+  window.startMusic=start;
+  window.stopMusic=stop;
+  window.playWinFanfare=()=>{stop();[523.25,659.25,783.99,1046.5].forEach((n,i)=>tone(n,.28,.08,'triangle',i*.14))};
+  document.addEventListener('pointerup',e=>{
+    if(e.target.closest('#go')||e.target.closest('#playAgainBtn')||e.target.closest('#again')) startFromGesture();
+    if(e.target.closest('#musicToggle')) toggle();
+  },true);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
+  update();
+})();
+</script>
+
 </body></html>
